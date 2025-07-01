@@ -11,10 +11,10 @@ echo "检查是否存在版本兼容性问题..."
 # 首先尝试稳定版本
 if [ -f "requirements_stable.txt" ]; then
     echo "使用稳定版本依赖..."
-    pip install -r requirements_stable.txt
+    pip install -r requirements_stable.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 else
     echo "使用默认版本依赖..."
-    pip install -r requirements.txt
+    pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 fi
 
 # 检查安装是否成功
