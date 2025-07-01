@@ -314,6 +314,24 @@ A:
 - 或升级 Docker Compose 到最新版本
 - 或直接使用 `./build_docker.sh run` 避免版本问题
 
+### Q: 出现 "LRScheduler 未定义" 错误？
+A:
+这是 transformers 与 PyTorch 版本兼容性问题：
+```bash
+# 解决方案1: 使用稳定版本
+pip uninstall torch transformers -y
+pip install -r requirements_stable.txt
+
+# 解决方案2: 手动安装兼容版本
+pip install torch==2.1.0 transformers==4.36.2 modelscope==1.9.5
+
+# 解决方案3: 使用诊断工具
+python3 simple_train.py  # 检查环境并提供修复建议
+
+# 解决方案4: 使用Docker（推荐）
+./build_docker.sh run  # Docker环境已预配置兼容版本
+```
+
 ## 模型部署
 
 训练完成后，模型保存在 `./output_qwen` 目录下，可以：

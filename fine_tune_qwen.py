@@ -10,18 +10,26 @@ import json
 import torch
 from dataclasses import dataclass, field
 from typing import Optional, Dict, Any, List
-import transformers
-from transformers import (
-    AutoTokenizer,
-    AutoModelForCausalLM,
-    TrainingArguments,
-    Trainer,
-    DataCollatorForSeq2Seq,
-    set_seed
-)
-from torch.utils.data import Dataset
-from modelscope import snapshot_download
 import logging
+
+# 设置兼容性导入
+try:
+    import transformers
+    from transformers import (
+        AutoTokenizer,
+        AutoModelForCausalLM,
+        TrainingArguments,
+        Trainer,
+        DataCollatorForSeq2Seq,
+        set_seed
+    )
+    from torch.utils.data import Dataset
+    from modelscope import snapshot_download
+except ImportError as e:
+    print(f"导入错误: {e}")
+    print("请确保安装了正确版本的依赖包:")
+    print("pip install torch==2.1.0 transformers==4.36.2 modelscope")
+    raise
 
 # 设置日志
 logging.basicConfig(level=logging.INFO)

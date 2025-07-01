@@ -6,7 +6,23 @@ python3 --version
 
 # 安装依赖
 echo "安装依赖包..."
-pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+echo "检查是否存在版本兼容性问题..."
+
+# 首先尝试稳定版本
+if [ -f "requirements_stable.txt" ]; then
+    echo "使用稳定版本依赖..."
+    pip install -r requirements_stable.txt
+else
+    echo "使用默认版本依赖..."
+    pip install -r requirements.txt
+fi
+
+# 检查安装是否成功
+echo "验证安装..."
+python3 -c "import torch; import transformers; import modelscope; print('✅ 依赖安装成功')" || {
+    echo "❌ 依赖安装失败，尝试重新安装兼容版本..."
+    pip install torch==2.1.0 transformers==4.36.2 modelscope==1.9.5 -i https://pypi.tuna.tsinghua.edu.cn/simple
+}
 
 # 设置环境变量
 export CUDA_VISIBLE_DEVICES=0
