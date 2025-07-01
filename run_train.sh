@@ -6,7 +6,7 @@ python3 --version
 
 # 安装依赖
 echo "安装依赖包..."
-pip install -r requirements.txt
+pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 
 # 设置环境变量
 export CUDA_VISIBLE_DEVICES=0
