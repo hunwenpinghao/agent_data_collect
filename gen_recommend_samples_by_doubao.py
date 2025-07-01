@@ -189,6 +189,7 @@ def generate_recommendation_reason_nonfood(
     client = Ark(api_key=os.environ.get("ARK_API_KEY"))
     df = pd.read_csv(csv_path)
     output_samples = []
+    total_samples = len(df)
 
     for i, row in df.iterrows():
         try:
@@ -198,16 +199,18 @@ def generate_recommendation_reason_nonfood(
             name = row["店铺名称"]
             category = str(row["二级业态"]).strip()
             product = str(row["产品服务"]).strip()
-            score = str(row["店铺评分"]).strip()
-            price = str(row["人均价格"]).strip()
-            label = str(row["店铺标签"]).strip()
+            score = str(row["店铺评分"]).strip() if pd.notna(row["店铺评分"]) else ""
+            price = str(row["人均价格"]).strip() if pd.notna(row["人均价格"]) else ""
+            label = str(row["店铺标签"]).strip() if pd.notna(row["店铺标签"]) else ""
             desc = row["店铺描述"].strip()
 
             prompt = f"""你是一个擅长撰写推荐文案的小助手，请根据以下店铺信息，生成简洁明了的推荐理由，要求包含：店铺特色、产品亮点、适用场景，风格简洁、正式、表达自然。
 
 店铺名称：{name}
 主营类型：{category}，{product}
-
+评分：{score}
+人均：{price}
+标签：{label}
 简介：{desc}
 
 推荐理由：(请保留标签)"""
@@ -221,12 +224,12 @@ def generate_recommendation_reason_nonfood(
 
             sample = {
                 "instruction": f"你是一个擅长撰写推荐文案的小助手，请根据提供的店铺信息，生成简洁明了的推荐理由，要求突出店铺特色、产品亮点及适用场景。",
-                "input": f"店铺名称：{name}\n主营类型：{category}，{product}\n简介：{desc}",
+                "input": f"店铺名称：{name}\n主营类型：{category}，{product}\n简介：{desc}\n评分：{score}\n人均：{price}\n标签：{label}",
                 "output": reason
             }
             output_samples.append(sample)
 
-            print(f"[{len(output_samples)}] ✓ {name}")
+            print(f"[{len(output_samples)}/{total_samples}] ✓ {name}")
             time.sleep(sleep_time)
 
             if max_samples and len(output_samples) >= max_samples:
@@ -250,8 +253,8 @@ def generate_recommendation_reason_nonfood(
 
 # ✅ 主执行逻辑（组合调用）
 if __name__ == "__main__":
-    csv_path = "/Users/aibee/hwp/eventgpt/omni-mllm/xiaohongshu_data/正弘城知识库汇总-餐饮店铺列表.csv"
-    output_path = "/Users/aibee/hwp/eventgpt/omni-mllm/xiaohongshu_data/zhc_store_recommend_doubao.jsonl"
+    csv_path = "/Users/aibee/hwp/eventgpt/omni-mllm/agent_data_collect/正弘城知识库汇总-餐饮店铺列表.csv"
+    output_path = "/Users/aibee/hwp/eventgpt/omni-mllm/agent_data_collect/zhc_store_recommend_doubao.jsonl"
 
     # recommend_samples = build_recommend_samples_from_csv(csv_path)
     # print(f"共构建原始推荐样本：{len(recommend_samples)} 条")
@@ -266,13 +269,13 @@ if __name__ == "__main__":
     # This is temporary bug fix code
     # standardize_instruction_input(
     #     original_jsonl_path=output_path,
-    #     updated_jsonl_path="/Users/aibee/hwp/eventgpt/omni-mllm/xiaohongshu_data/zhc_store_recommend_doubao_refined.jsonl"
+    #     updated_jsonl_path="/Users/aibee/hwp/eventgpt/omni-mllm/agent_data_collect/zhc_store_recommend_doubao_refined.jsonl"
     # )
 
     # 非餐饮类标签
     generate_recommendation_reason_nonfood(
-        csv_path="/Users/aibee/hwp/eventgpt/omni-mllm/xiaohongshu_data/正弘城知识库汇总-店铺数据除餐饮外.csv",
-        output_path="/Users/aibee/hwp/eventgpt/omni-mllm/xiaohongshu_data/zhc_store_recommend_reason_doubao.jsonl",
+        csv_path="/Users/aibee/hwp/eventgpt/omni-mllm/agent_data_collect/正弘城知识库汇总-店铺数据除餐饮外.csv",
+        output_path="/Users/aibee/hwp/eventgpt/omni-mllm/agent_data_collect/zhc_store_recommend_reason_doubao.jsonl",
         max_samples=None  # ⚠️ 改为 None 处理全部
     )
 
