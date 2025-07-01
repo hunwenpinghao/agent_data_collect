@@ -7,9 +7,6 @@ services:
     container_name: qwen3-finetune-container
     hostname: qwen-finetune
     
-    # GPU 支持 (需要 nvidia-docker2)
-    runtime: nvidia
-    
     # 端口映射
     ports:
       - "6006:6006"  # TensorBoard
@@ -24,9 +21,9 @@ services:
       - ./store_xhs_sft_samples.jsonl:/app/store_xhs_sft_samples.jsonl  # 训练数据文件
       - ./zhc_xhs_data_sft.jsonl:/app/zhc_xhs_data_sft.jsonl  # 备用训练数据
     
-    # 环境变量
+    # 环境变量 (CPU 模式)
     environment:
-      - CUDA_VISIBLE_DEVICES=0
+      - CUDA_VISIBLE_DEVICES=""  # 禁用 GPU
       - TOKENIZERS_PARALLELISM=false
       - HF_HOME=/app/.cache/huggingface
       - MODELSCOPE_CACHE=/app/.cache/modelscope
@@ -63,17 +60,12 @@ services:
     volumes:
       - ./output_qwen:/app/output_qwen
       - ./logs:/app/logs
+    environment:
+      - CUDA_VISIBLE_DEVICES=""  # CPU 模式
     command: tensorboard --logdir /app/output_qwen/runs --host 0.0.0.0 --port 6006
     restart: unless-stopped
 
 # 网络配置
 networks:
   default:
-    name: qwen-finetune-network
-
-# 数据卷配置 (可选)
-volumes:
-  model_cache:
-    driver: local
-  training_data:
-    driver: local 
+    name: qwen-finetune-network 

@@ -22,12 +22,13 @@ echo "✅ Docker 检查通过"
 echo ""
 echo "请选择运行方式:"
 echo "1) 使用 build_docker.sh 脚本 (推荐)"
-echo "2) 使用 docker-compose (适合生产环境)"
-echo "3) 查看使用说明"
-echo "4) 退出"
+echo "2) 使用 docker-compose (GPU模式)"
+echo "3) 使用 docker-compose (CPU模式，兼容性更好)"
+echo "4) 查看使用说明"
+echo "5) 退出"
 echo ""
 
-read -p "请输入选择 (1-4): " choice
+read -p "请输入选择 (1-5): " choice
 
 case $choice in
     1)
@@ -61,10 +62,10 @@ case $choice in
         
     2)
         echo ""
-        echo "🐳 使用 docker-compose..."
+        echo "🐳 使用 docker-compose (GPU模式)..."
         echo ""
         echo "步骤1: 构建并启动服务"
-        docker-compose up -d --build
+        ./build_docker.sh compose
         
         echo ""
         echo "步骤2: 等待服务启动..."
@@ -78,11 +79,6 @@ case $choice in
         echo "停止服务: docker-compose down"
         
         echo ""
-        echo "🌐 TensorBoard 已启动:"
-        echo "- 主服务: http://localhost:6006"
-        echo "- 独立服务: http://localhost:6007"
-        
-        echo ""
         read -p "是否立即开始训练? (y/n): " start_train
         if [[ $start_train == "y" || $start_train == "Y" ]]; then
             echo "🚀 开始训练..."
@@ -93,6 +89,34 @@ case $choice in
         ;;
         
     3)
+        echo ""
+        echo "💻 使用 docker-compose (CPU模式)..."
+        echo ""
+        echo "步骤1: 构建并启动服务 (CPU模式，更好兼容性)"
+        ./build_docker.sh compose-cpu
+        
+        echo ""
+        echo "步骤2: 等待服务启动..."
+        sleep 5
+        
+        echo ""
+        echo "步骤3: 显示可用命令"
+        echo "进入主容器: docker-compose -f docker-compose.cpu.yml exec qwen3-finetune /bin/bash"
+        echo "开始训练: docker-compose -f docker-compose.cpu.yml exec qwen3-finetune ./run_train.sh"
+        echo "查看日志: docker-compose -f docker-compose.cpu.yml logs -f qwen3-finetune"
+        echo "停止服务: docker-compose -f docker-compose.cpu.yml down"
+        
+        echo ""
+        read -p "是否立即开始训练? (y/n): " start_train
+        if [[ $start_train == "y" || $start_train == "Y" ]]; then
+            echo "🚀 开始训练 (CPU模式，可能较慢)..."
+            docker-compose -f docker-compose.cpu.yml exec qwen3-finetune ./run_train.sh
+        else
+            echo "💡 提示: 运行 'docker-compose -f docker-compose.cpu.yml exec qwen3-finetune ./run_train.sh' 开始训练"
+        fi
+        ;;
+        
+    4)
         echo ""
         echo "📖 使用说明"
         echo "============"
@@ -119,10 +143,10 @@ case $choice in
         echo "🧪 测试模型:"
         echo "   python3 inference.py --model_path ./output_qwen --interactive"
         echo ""
-        echo "详细文档请查看: README_FINETUNE.md"
+        echo "        详细文档请查看: README_FINETUNE.md"
         ;;
         
-    4)
+    5)
         echo "👋 再见!"
         exit 0
         ;;

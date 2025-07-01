@@ -52,8 +52,12 @@ Docker 方式更简单，环境隔离更好：
 
 #### Docker Compose 方式
 
+**GPU 模式**（需要 nvidia-docker）：
 ```bash
-# 构建并启动所有服务
+# 使用脚本启动
+./build_docker.sh compose
+
+# 或手动启动
 docker-compose up -d
 
 # 进入主容器
@@ -61,12 +65,21 @@ docker-compose exec qwen3-finetune /bin/bash
 
 # 开始训练
 docker-compose exec qwen3-finetune ./run_train.sh
+```
 
-# 查看日志
-docker-compose logs -f qwen3-finetune
+**CPU 模式**（更好兼容性，无GPU要求）：
+```bash
+# 使用脚本启动
+./build_docker.sh compose-cpu
 
-# 停止所有服务
-docker-compose down
+# 或手动启动
+docker-compose -f docker-compose.cpu.yml up -d
+
+# 进入主容器
+docker-compose -f docker-compose.cpu.yml exec qwen3-finetune /bin/bash
+
+# 开始训练（CPU模式会较慢）
+docker-compose -f docker-compose.cpu.yml exec qwen3-finetune ./run_train.sh
 ```
 
 ### 方法2：本地部署
@@ -253,6 +266,12 @@ A:
 - 检查网络连接
 - 确保 Docker 有足够磁盘空间
 - 尝试使用国内镜像源
+
+### Q: docker-compose 版本不支持错误？
+A:
+- 使用 CPU 模式：`./build_docker.sh compose-cpu`
+- 或升级 Docker Compose 到最新版本
+- 或直接使用 `./build_docker.sh run` 避免版本问题
 
 ## 模型部署
 

@@ -119,6 +119,8 @@ show_help() {
     echo "  shell         进入容器"
     echo "  train         开始训练"
     echo "  tensorboard   启动TensorBoard"
+    echo "  compose       使用docker-compose启动"
+    echo "  compose-cpu   使用docker-compose启动（CPU模式）"
     echo "  stop          停止容器"
     echo "  clean         清理容器和镜像"
     echo "  logs          查看日志"
@@ -127,7 +129,8 @@ show_help() {
     echo "示例:"
     echo "  $0 build && $0 run     # 构建并运行"
     echo "  $0 train               # 开始训练"
-    echo "  $0 tensorboard         # 启动监控"
+    echo "  $0 compose             # 使用docker-compose"
+    echo "  $0 compose-cpu         # CPU模式（无GPU要求）"
 }
 
 # 主函数
@@ -167,6 +170,22 @@ case "${1:-help}" in
         else
             print_error "容器未运行，请先执行: $0 run-bg"
         fi
+        ;;
+    "compose")
+        print_info "使用docker-compose启动（GPU模式）..."
+        docker-compose up -d --build
+        print_success "服务已启动"
+        print_info "进入容器: docker-compose exec qwen3-finetune /bin/bash"
+        print_info "开始训练: docker-compose exec qwen3-finetune ./run_train.sh"
+        print_info "TensorBoard: http://localhost:6006 (主服务) http://localhost:6007 (独立服务)"
+        ;;
+    "compose-cpu")
+        print_info "使用docker-compose启动（CPU模式）..."
+        docker-compose -f docker-compose.cpu.yml up -d --build
+        print_success "服务已启动（CPU模式）"
+        print_info "进入容器: docker-compose -f docker-compose.cpu.yml exec qwen3-finetune /bin/bash"
+        print_info "开始训练: docker-compose -f docker-compose.cpu.yml exec qwen3-finetune ./run_train.sh"
+        print_info "TensorBoard: http://localhost:6006 (主服务) http://localhost:6007 (独立服务)"
         ;;
     "stop")
         docker stop ${CONTAINER_NAME} 2>/dev/null || true
