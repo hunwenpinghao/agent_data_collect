@@ -44,7 +44,7 @@ class DataArguments:
     """数据相关参数"""
     data_path: str = field(
         default="store_xhs_sft_samples.jsonl",
-        metadata={"help": "训练数据文件路径"}
+        metadata={"help": "训练数据文件路径，支持单个文件或多个文件（逗号分隔）"}
     )
     max_seq_length: int = field(
         default=2048,
@@ -87,20 +87,51 @@ class SFTDataset(Dataset):
         self.data = self.load_data(data_path)
         
     def load_data(self, data_path: str) -> List[Dict]:
-        """加载JSONL格式的数据"""
+        """加载JSONL格式的数据，支持单个文件或多个文件"""
         data = []
-        try:
-            with open(data_path, 'r', encoding='utf-8') as f:
-                for line in f:
-                    line = line.strip()
-                    if line:
-                        item = json.loads(line)
-                        if all(key in item for key in ['instruction', 'input', 'output']):
-                            data.append(item)
-            logger.info(f"成功加载 {len(data)} 条训练数据")
-        except Exception as e:
-            logger.error(f"加载数据失败: {e}")
-            raise
+        
+        # 解析文件路径，支持逗号分隔的多个文件
+        if ',' in data_path:
+            file_paths = [path.strip() for path in data_path.split(',') if path.strip()]
+        else:
+            file_paths = [data_path.strip()]
+        
+        logger.info(f"准备加载 {len(file_paths)} 个数据文件: {file_paths}")
+        
+        total_loaded = 0
+        for file_path in file_paths:
+            if not os.path.exists(file_path):
+                logger.warning(f"文件不存在，跳过: {file_path}")
+                continue
+                
+            file_data = []
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    for line_num, line in enumerate(f, 1):
+                        line = line.strip()
+                        if line:
+                            try:
+                                item = json.loads(line)
+                                if all(key in item for key in ['instruction', 'input', 'output']):
+                                    file_data.append(item)
+                                else:
+                                    logger.warning(f"{file_path} 第{line_num}行缺少必要字段，跳过")
+                            except json.JSONDecodeError as e:
+                                logger.warning(f"{file_path} 第{line_num}行JSON解析失败: {e}")
+                                continue
+                
+                logger.info(f"从 {file_path} 加载了 {len(file_data)} 条数据")
+                data.extend(file_data)
+                total_loaded += len(file_data)
+                
+            except Exception as e:
+                logger.error(f"加载文件 {file_path} 失败: {e}")
+                raise
+        
+        if total_loaded == 0:
+            raise ValueError("没有加载到任何有效的训练数据")
+            
+        logger.info(f"总共成功加载 {total_loaded} 条训练数据")
         return data
     
     def __len__(self):

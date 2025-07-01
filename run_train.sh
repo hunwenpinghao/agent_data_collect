@@ -19,7 +19,7 @@ mkdir -p logs
 # 运行训练
 echo "开始训练..."
 python3 fine_tune_qwen.py \
-    --config_file train_config.json \
+    --config_file train_config_multi_files.json \
     2>&1 | tee logs/training_$(date +%Y%m%d_%H%M%S).log
 
 echo "训练完成！"

@@ -216,6 +216,47 @@ python3 inference.py --model_path ./output_qwen --test_file store_xhs_sft_sample
 }
 ```
 
+### 🆕 多文件训练支持
+
+现在支持使用多个 JSONL 文件进行训练：
+
+**单文件模式**：
+```json
+{
+    "data_path": "store_xhs_sft_samples.jsonl"
+}
+```
+
+**多文件模式**（逗号分隔）：
+```json
+{
+    "data_path": "file1.jsonl,file2.jsonl,file3.jsonl"
+}
+```
+
+**多文件模式**（带空格也支持）：
+```json
+{
+    "data_path": "file1.jsonl, file2.jsonl, file3.jsonl"
+}
+```
+
+**使用示例**：
+```bash
+# 使用多文件配置
+python3 fine_tune_qwen.py --config_file train_config_multi_files.json
+
+# 或直接命令行参数
+python3 fine_tune_qwen.py --data_path "store_xhs_sft_samples.jsonl,zhc_xhs_data_sft.jsonl"
+```
+
+**特性**：
+- ✅ 自动合并多个文件的数据
+- ✅ 跳过不存在的文件并显示警告
+- ✅ 详细的加载日志，显示每个文件的数据量
+- ✅ 支持任意数量的文件
+- ✅ 自动去除文件路径中的空格
+
 ## 配置说明
 
 ### 硬件配置建议
