@@ -5,13 +5,17 @@
 ## 项目结构
 
 ```
-├── fine_tune_qwen.py      # 主要的微调脚本
-├── inference.py           # 推理测试脚本
-├── train_config.json      # 训练配置文件
-├── requirements.txt       # 依赖包列表
-├── run_train.sh          # 训练启动脚本
+├── fine_tune_qwen.py          # 主要的微调脚本
+├── inference.py               # 推理测试脚本
+├── train_config.json          # 训练配置文件
+├── requirements.txt           # 依赖包列表
+├── run_train.sh              # 训练启动脚本
+├── Dockerfile                # Docker镜像配置
+├── build_docker.sh           # Docker构建脚本
+├── docker-compose.yml        # Docker Compose配置
+├── .dockerignore             # Docker忽略文件
 ├── store_xhs_sft_samples.jsonl  # 训练数据
-└── README_FINETUNE.md    # 本文档
+└── README_FINETUNE.md        # 本文档
 ```
 
 ## 环境要求
@@ -20,16 +24,60 @@
 - CUDA 11.8+ (如果使用GPU)
 - 至少16GB RAM (建议32GB+)
 - 至少10GB显存 (建议16GB+)
+- Docker (可选，用于容器化部署)
 
 ## 快速开始
 
-### 1. 安装依赖
+### 方法1：Docker 部署（推荐）
+
+Docker 方式更简单，环境隔离更好：
+
+```bash
+# 1. 构建并运行（交互模式）
+./build_docker.sh run
+
+# 2. 或者后台运行
+./build_docker.sh run-bg
+
+# 3. 进入容器
+./build_docker.sh shell
+
+# 4. 在容器内开始训练
+./run_train.sh
+
+# 5. 启动 TensorBoard 监控
+./build_docker.sh tensorboard
+# 访问 http://localhost:6006
+```
+
+#### Docker Compose 方式
+
+```bash
+# 构建并启动所有服务
+docker-compose up -d
+
+# 进入主容器
+docker-compose exec qwen3-finetune /bin/bash
+
+# 开始训练
+docker-compose exec qwen3-finetune ./run_train.sh
+
+# 查看日志
+docker-compose logs -f qwen3-finetune
+
+# 停止所有服务
+docker-compose down
+```
+
+### 方法2：本地部署
+
+#### 1. 安装依赖
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. 配置训练参数
+#### 2. 配置训练参数
 
 编辑 `train_config.json` 文件，根据你的硬件配置调整参数：
 
@@ -51,27 +99,75 @@ pip install -r requirements.txt
 - `learning_rate`: 学习率
 - `num_train_epochs`: 训练轮数
 
-### 3. 开始训练
+#### 3. 开始训练
 
-#### 方法1：使用启动脚本（推荐）
+##### 方法1：使用启动脚本（推荐）
 
 ```bash
 ./run_train.sh
 ```
 
-#### 方法2：手动运行
+##### 方法2：手动运行
 
 ```bash
 python3 fine_tune_qwen.py --config_file train_config.json
 ```
 
-### 4. 监控训练进度
+#### 4. 监控训练进度
 
 训练过程中可以使用 TensorBoard 监控：
 
 ```bash
 tensorboard --logdir ./output_qwen/runs
 ```
+
+## Docker 使用详解
+
+### build_docker.sh 脚本命令
+
+```bash
+# 构建镜像
+./build_docker.sh build
+
+# 运行容器（交互模式）
+./build_docker.sh run
+
+# 后台运行容器
+./build_docker.sh run-bg
+
+# 进入正在运行的容器
+./build_docker.sh shell
+
+# 在容器中开始训练
+./build_docker.sh train
+
+# 启动 TensorBoard
+./build_docker.sh tensorboard
+
+# 查看容器日志
+./build_docker.sh logs
+
+# 停止容器
+./build_docker.sh stop
+
+# 清理容器和镜像
+./build_docker.sh clean
+
+# 显示帮助
+./build_docker.sh help
+```
+
+### Docker 数据卷映射
+
+- `./data` → `/app/data` - 训练数据目录
+- `./output_qwen` → `/app/output_qwen` - 模型输出目录
+- `./logs` → `/app/logs` - 训练日志目录
+- `./.cache` → `/app/.cache` - 模型缓存目录
+
+### Docker 端口映射
+
+- `6006` - TensorBoard Web界面
+- `8000` - 推理服务端口（预留）
 
 ## 推理测试
 
@@ -146,17 +242,31 @@ A:
 - 人工评估生成文案质量
 - 使用BLEU、ROUGE等指标
 
+### Q: Docker 容器无法访问 GPU？
+A:
+- 确保安装了 nvidia-docker2
+- 检查 `nvidia-smi` 命令是否可用
+- 使用 `docker run --gpus all` 测试GPU访问
+
+### Q: Docker 构建失败？
+A:
+- 检查网络连接
+- 确保 Docker 有足够磁盘空间
+- 尝试使用国内镜像源
+
 ## 模型部署
 
 训练完成后，模型保存在 `./output_qwen` 目录下，可以：
 
 1. **本地部署**: 使用 `inference.py` 脚本
-2. **服务化部署**: 集成到FastAPI或Flask应用中
-3. **量化部署**: 使用ONNX或TensorRT进行推理加速
+2. **Docker 部署**: 基于现有镜像创建推理服务
+3. **服务化部署**: 集成到FastAPI或Flask应用中
+4. **量化部署**: 使用ONNX或TensorRT进行推理加速
 
 ## 版本历史
 
 - v1.0: 初始版本，支持基础微调功能
+- v1.1: 添加Docker支持，容器化部署
 - 后续版本将支持更多高级功能
 
 ## 许可证
@@ -168,8 +278,12 @@ A:
 如有问题，请查看：
 1. 训练日志文件（在 `logs/` 目录下）
 2. TensorBoard 监控面板
-3. 相关文档和示例
+3. Docker 容器日志：`docker logs qwen3-finetune-container`
+4. 相关文档和示例
 
 ---
 
-**注意**: 首次运行会自动下载模型文件，可能需要较长时间，请确保网络连接稳定。 
+**注意**: 
+- 首次运行会自动下载模型文件，可能需要较长时间，请确保网络连接稳定
+- 使用 Docker 时，模型文件会缓存在 `.cache` 目录中，避免重复下载
+- 建议使用 GPU 进行训练，CPU 模式训练时间会很长 

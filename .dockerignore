@@ -1,0 +1,80 @@
+# Git 相关
+.git
+.gitignore
+*.git
+
+# Python 缓存
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# 虚拟环境
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE 文件
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 日志文件
+*.log
+logs/
+
+# 输出目录
+output_qwen/
+*.pt
+*.bin
+*.safetensors
+
+# 缓存目录
+.cache/
+__pycache__/
+
+# 临时文件
+*.tmp
+*.temp
+.pytest_cache/
+
+# 数据文件（太大，通过挂载卷访问）
+data/
+*.jsonl.bak
+*.csv.bak
+
+# Docker 相关
+.dockerignore
+Dockerfile
+*.md
+
+# 其他
+*.pid
+*.seed
+*.pid.lock
+.coverage
+.nyc_output 
