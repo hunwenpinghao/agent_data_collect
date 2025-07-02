@@ -252,10 +252,74 @@ def generate_response(
         logger.warning(f"⚠️ 生成失败: {e}")
         return ""
 
+def generate_batch_responses(
+    model, 
+    tokenizer, 
+    prompts: List[str], 
+    max_tokens: int = 512,
+    temperature: float = 0.7,
+    top_p: float = 0.9,
+    repetition_penalty: float = 1.1
+) -> List[str]:
+    """批量生成模型回复"""
+    try:
+        # 批量编码输入
+        inputs = tokenizer(
+            prompts, 
+            return_tensors="pt", 
+            padding=True, 
+            truncation=True, 
+            max_length=2048
+        )
+        
+        # 移动到设备
+        if model.device.type != "cpu":
+            inputs = {k: v.to(model.device) for k, v in inputs.items()}
+        
+        # 生成配置
+        generation_config = GenerationConfig(
+            max_new_tokens=max_tokens,
+            temperature=temperature,
+            top_p=top_p,
+            do_sample=temperature > 0,
+            pad_token_id=tokenizer.pad_token_id,
+            eos_token_id=tokenizer.eos_token_id,
+            repetition_penalty=repetition_penalty,
+            no_repeat_ngram_size=3
+        )
+        
+        # 批量生成回复
+        with torch.no_grad():
+            outputs = model.generate(
+                **inputs,
+                generation_config=generation_config
+            )
+        
+        # 解码输出，去掉输入部分
+        responses = []
+        input_lengths = inputs['input_ids'].shape[1]
+        
+        for i, output in enumerate(outputs):
+            # 对于批量生成，每个样本的输入长度可能不同
+            # 使用attention_mask找到实际的输入长度
+            actual_input_length = inputs['attention_mask'][i].sum().item()
+            generated_tokens = output[actual_input_length:]
+            response = tokenizer.decode(generated_tokens, skip_special_tokens=True)
+            responses.append(response.strip())
+        
+        return responses
+        
+    except Exception as e:
+        logger.warning(f"⚠️ 批量生成失败: {e}")
+        # 回退到单个生成
+        return [generate_response(model, tokenizer, prompt, max_tokens, temperature, top_p) 
+                for prompt in prompts]
+
 def evaluate_generation(
     model, 
     tokenizer, 
     eval_data: List[Dict],
+    batch_size: int = 4,
     max_tokens: int = 512,
     temperature: float = 0.7,
     top_p: float = 0.9,
@@ -263,28 +327,48 @@ def evaluate_generation(
     output_dir: str = "./eval_results"
 ) -> Dict[str, Any]:
     """执行生成评估"""
-    logger.info("🚀 开始生成评估...")
+    logger.info(f"🚀 开始生成评估 (batch_size={batch_size})...")
     
     predictions = []
     references = []
     inputs_list = []
     
-    # 创建进度条
-    for item in tqdm(eval_data, desc="生成评估", unit="样本"):
-        # 构建提示
+    # 准备所有数据
+    all_prompts = []
+    all_references = []
+    
+    for item in eval_data:
         prompt = build_prompt(item)
-        inputs_list.append(prompt)
-        
-        # 生成回复
-        prediction = generate_response(
-            model, tokenizer, prompt, 
-            max_tokens, temperature, top_p
-        )
-        predictions.append(prediction)
-        
-        # 获取参考答案
         reference = extract_reference(item)
-        references.append(reference)
+        all_prompts.append(prompt)
+        all_references.append(reference)
+    
+    # 批量处理
+    total_batches = (len(all_prompts) + batch_size - 1) // batch_size
+    
+    for i in tqdm(range(0, len(all_prompts), batch_size), 
+                  desc="批量生成", unit="batch", total=total_batches):
+        batch_prompts = all_prompts[i:i + batch_size]
+        batch_references = all_references[i:i + batch_size]
+        
+        # 批量生成
+        if len(batch_prompts) == 1:
+            # 单个样本使用原来的方法
+            batch_predictions = [generate_response(
+                model, tokenizer, batch_prompts[0], 
+                max_tokens, temperature, top_p
+            )]
+        else:
+            # 多个样本使用批量生成
+            batch_predictions = generate_batch_responses(
+                model, tokenizer, batch_prompts,
+                max_tokens, temperature, top_p
+            )
+        
+        # 收集结果
+        predictions.extend(batch_predictions)
+        references.extend(batch_references)
+        inputs_list.extend(batch_prompts)
     
     # 保存预测结果
     if save_predictions:
@@ -465,6 +549,8 @@ def main():
     # 可选参数
     parser.add_argument("-o", "--output-dir", default="./eval_results",
                        help="评估结果输出目录 (默认: ./eval_results)")
+    parser.add_argument("-b", "--batch-size", type=int, default=4,
+                       help="批处理大小 (默认: 4)")
     parser.add_argument("--max-tokens", type=int, default=512,
                        help="最大生成token数 (默认: 512)")
     parser.add_argument("--temperature", type=float, default=0.7,
@@ -502,6 +588,7 @@ def main():
         # 执行评估
         eval_results = evaluate_generation(
             model, tokenizer, eval_data,
+            batch_size=args.batch_size,
             max_tokens=args.max_tokens,
             temperature=args.temperature,
             top_p=args.top_p,
@@ -524,6 +611,7 @@ def main():
             "num_samples": eval_results["num_samples"],
             "metrics": metrics,
             "config": {
+                "batch_size": args.batch_size,
                 "max_tokens": args.max_tokens,
                 "temperature": args.temperature,
                 "top_p": args.top_p,

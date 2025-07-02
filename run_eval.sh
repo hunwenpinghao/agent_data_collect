@@ -43,6 +43,7 @@ Qwen 模型评估脚本包装器
     -m, --model-path PATH       微调后的模型路径 (必需)
     -d, --data-path PATH        评估数据路径 (必需)
     -o, --output-dir PATH       输出目录 (默认: ./eval_results)
+    -b, --batch-size NUM        批处理大小 (默认: 4)
     --max-tokens NUM            最大生成token数 (默认: 512)
     --temperature FLOAT         生成温度 (默认: 0.7)
     --top-p FLOAT              Top-p采样 (默认: 0.9)
@@ -61,6 +62,9 @@ Qwen 模型评估脚本包装器
     $0 -m ./output/checkpoint-best -d ./data/test.jsonl \\
        --metrics bleu,rouge,exact_match \\
        --save-predictions --verbose
+    
+    # 使用大批处理提高速度
+    $0 -m ./output/checkpoint-best -d ./data/test.jsonl -b 8
     
     # 使用CPU评估
     $0 -m ./output/checkpoint-best -d ./data/test.jsonl --device cpu
@@ -191,6 +195,14 @@ main() {
                     exit 1
                 fi
                 python_cmd+=" --output-dir \"$2\""
+                shift 2
+                ;;
+            -b|--batch-size)
+                if [[ -z "$2" ]]; then
+                    log_error "选项 $1 需要参数"
+                    exit 1
+                fi
+                python_cmd+=" --batch-size $2"
                 shift 2
                 ;;
             --max-tokens)
