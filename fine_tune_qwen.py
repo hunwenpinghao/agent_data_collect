@@ -136,6 +136,7 @@ class CustomTrainingArguments(TrainingArguments):
     save_steps: int = field(default=500)
     eval_steps: int = field(default=500)
     evaluation_strategy: IntervalStrategy = field(default=IntervalStrategy.STEPS)
+    eval_strategy: IntervalStrategy = field(default=IntervalStrategy.STEPS)
     save_strategy: SaveStrategy = field(default=SaveStrategy.STEPS)
     save_total_limit: int = field(default=3)
     load_best_model_at_end: bool = field(default=True)
