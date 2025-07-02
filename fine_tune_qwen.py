@@ -21,14 +21,23 @@ try:
         TrainingArguments,
         Trainer,
         DataCollatorForSeq2Seq,
-        set_seed
+        set_seed,
+        BitsAndBytesConfig
     )
     from torch.utils.data import Dataset
     from modelscope import snapshot_download
+    from peft import (
+        LoraConfig,
+        TaskType,
+        get_peft_model,
+        PeftModel,
+        prepare_model_for_kbit_training
+    )
+    import bitsandbytes as bnb
 except ImportError as e:
     print(f"导入错误: {e}")
     print("请确保安装了正确版本的依赖包:")
-    print("pip install torch==2.1.0 transformers==4.36.2 modelscope")
+    print("pip install torch==2.1.0 transformers==4.37.0 modelscope peft bitsandbytes")
     raise
 
 # 设置日志
@@ -45,6 +54,34 @@ class ModelArguments:
     cache_dir: Optional[str] = field(
         default=None,
         metadata={"help": "模型缓存目录"}
+    )
+    use_lora: bool = field(
+        default=False,
+        metadata={"help": "是否使用LoRA微调"}
+    )
+    use_qlora: bool = field(
+        default=False,
+        metadata={"help": "是否使用QLoRA微调（需要量化）"}
+    )
+    lora_r: int = field(
+        default=64,
+        metadata={"help": "LoRA的rank"}
+    )
+    lora_alpha: int = field(
+        default=16,
+        metadata={"help": "LoRA的alpha参数"}
+    )
+    lora_dropout: float = field(
+        default=0.1,
+        metadata={"help": "LoRA的dropout率"}
+    )
+    lora_target_modules: Optional[str] = field(
+        default="q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj",
+        metadata={"help": "LoRA目标模块，逗号分隔"}
+    )
+    quantization_bit: int = field(
+        default=4,
+        metadata={"help": "量化位数，支持4或8位"}
     )
 
 @dataclass
@@ -197,6 +234,61 @@ def download_model(model_name: str, cache_dir: str = "./models") -> str:
         logger.error(f"模型下载失败: {e}")
         raise
 
+def create_quantization_config(model_args: ModelArguments) -> Optional[BitsAndBytesConfig]:
+    """创建量化配置"""
+    if not model_args.use_qlora:
+        return None
+    
+    if model_args.quantization_bit == 4:
+        quantization_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_compute_dtype=torch.float16,
+            bnb_4bit_use_double_quant=True,
+            bnb_4bit_quant_type="nf4",
+        )
+    elif model_args.quantization_bit == 8:
+        quantization_config = BitsAndBytesConfig(
+            load_in_8bit=True,
+        )
+    else:
+        raise ValueError(f"不支持的量化位数: {model_args.quantization_bit}")
+    
+    logger.info(f"使用{model_args.quantization_bit}位量化")
+    return quantization_config
+
+def create_lora_config(model_args: ModelArguments) -> Optional[LoraConfig]:
+    """创建LoRA配置"""
+    if not (model_args.use_lora or model_args.use_qlora):
+        return None
+    
+    target_modules = model_args.lora_target_modules.split(',') if model_args.lora_target_modules else None
+    
+    lora_config = LoraConfig(
+        task_type=TaskType.CAUSAL_LM,
+        r=model_args.lora_r,
+        lora_alpha=model_args.lora_alpha,
+        lora_dropout=model_args.lora_dropout,
+        target_modules=target_modules,
+        bias="none",
+    )
+    
+    logger.info(f"LoRA配置: r={model_args.lora_r}, alpha={model_args.lora_alpha}, "
+                f"dropout={model_args.lora_dropout}, target_modules={target_modules}")
+    return lora_config
+
+def find_all_linear_names(model):
+    """找到模型中所有的线性层名称"""
+    cls = bnb.nn.Linear4bit if hasattr(bnb.nn, 'Linear4bit') else torch.nn.Linear
+    lora_module_names = set()
+    for name, module in model.named_modules():
+        if isinstance(module, cls):
+            names = name.split('.')
+            lora_module_names.add(names[0] if len(names) == 1 else names[-1])
+    
+    if 'lm_head' in lora_module_names:
+        lora_module_names.remove('lm_head')
+    return list(lora_module_names)
+
 def main():
     # 解析参数
     parser = transformers.HfArgumentParser((ModelArguments, DataArguments, TrainingArguments))
@@ -242,17 +334,45 @@ def main():
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
     
+    # 创建量化配置
+    quantization_config = create_quantization_config(model_args)
+    
     # 加载模型
     logger.info("加载模型...")
-    model = AutoModelForCausalLM.from_pretrained(
-        model_path,
-        torch_dtype=torch.float16 if training_args.fp16 else torch.float32,
-        device_map="auto",
-        trust_remote_code=True
-    )
+    model_kwargs = {
+        "trust_remote_code": True,
+        "device_map": "auto",
+    }
     
-    # 确保模型支持梯度检查点
-    model.gradient_checkpointing_enable()
+    if quantization_config is not None:
+        model_kwargs["quantization_config"] = quantization_config
+        model_kwargs["torch_dtype"] = torch.float16
+    else:
+        model_kwargs["torch_dtype"] = torch.float16 if training_args.fp16 else torch.float32
+    
+    model = AutoModelForCausalLM.from_pretrained(model_path, **model_kwargs)
+    
+    # 如果使用QLoRA，准备模型进行k-bit训练
+    if model_args.use_qlora:
+        logger.info("准备模型进行k-bit训练...")
+        model = prepare_model_for_kbit_training(model)
+    
+    # 如果使用LoRA或QLoRA，应用LoRA配置
+    if model_args.use_lora or model_args.use_qlora:
+        logger.info("应用LoRA配置...")
+        lora_config = create_lora_config(model_args)
+        
+        # 如果没有指定target_modules，自动发现
+        if lora_config.target_modules is None:
+            logger.info("自动发现LoRA目标模块...")
+            lora_config.target_modules = find_all_linear_names(model)
+            logger.info(f"发现的目标模块: {lora_config.target_modules}")
+        
+        model = get_peft_model(model, lora_config)
+        model.print_trainable_parameters()
+    else:
+        # 确保模型支持梯度检查点（仅在非LoRA模式下）
+        model.gradient_checkpointing_enable()
     
     # 创建数据集
     logger.info("创建训练数据集...")
@@ -289,7 +409,18 @@ def main():
     
     # 保存模型
     logger.info("保存模型...")
-    trainer.save_model()
+    if model_args.use_lora or model_args.use_qlora:
+        # 保存LoRA适配器
+        model.save_pretrained(training_args.output_dir)
+        logger.info(f"LoRA适配器已保存到: {training_args.output_dir}")
+        
+        # 如果需要，也可以保存合并后的模型
+        # merged_model = model.merge_and_unload()
+        # merged_model.save_pretrained(os.path.join(training_args.output_dir, "merged_model"))
+    else:
+        # 保存完整模型
+        trainer.save_model()
+    
     tokenizer.save_pretrained(training_args.output_dir)
     
     logger.info("训练完成！")

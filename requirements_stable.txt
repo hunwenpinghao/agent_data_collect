@@ -4,6 +4,7 @@ modelscope==1.9.5
 datasets==2.13.0
 accelerate==0.24.1
 peft==0.6.2
+bitsandbytes>=0.41.0
 sentencepiece==0.1.99
 tiktoken==0.5.2
 einops==0.7.0
