@@ -41,7 +41,8 @@ try:
         Trainer,
         DataCollatorForSeq2Seq,
         set_seed,
-        BitsAndBytesConfig
+        BitsAndBytesConfig,
+        AutoConfig
     )
     from torch.utils.data import Dataset
     from transformers.trainer_utils import IntervalStrategy, SaveStrategy
@@ -336,6 +337,66 @@ def find_all_linear_names(model):
         lora_module_names.remove('lm_head')
     return list(lora_module_names)
 
+def load_model_with_patch(model_path: str, **kwargs):
+    """
+    加载模型并修复可能的配置问题，特别是解决 NoneType 迭代错误
+    """
+    try:
+        # 导入必要的类
+        from transformers import AutoConfig, AutoModelForCausalLM
+        import torch
+        
+        # 加载配置
+        config = AutoConfig.from_pretrained(model_path, trust_remote_code=True)
+        
+        # 修复所有可能导致 NoneType 错误的配置项
+        config_fixes = {
+            'attn_implementation': 'eager',
+            'pretraining_tp': 1,
+            'torch_dtype': torch.float16,
+            'use_cache': True,
+            'attention_dropout': 0.0,
+            'hidden_dropout': 0.0,
+            'intermediate_size': getattr(config, 'intermediate_size', 11008),
+            'max_position_embeddings': getattr(config, 'max_position_embeddings', 32768),
+            'rope_theta': getattr(config, 'rope_theta', 10000.0),
+            'rope_scaling': None,  # 明确设置为None而不是未定义
+            'tie_word_embeddings': getattr(config, 'tie_word_embeddings', False),
+            '_name_or_path': model_path
+        }
+        
+        # 应用修复
+        for key, default_value in config_fixes.items():
+            if not hasattr(config, key) or getattr(config, key) is None:
+                setattr(config, key, default_value)
+        
+        # 特殊处理：如果是 Qwen 模型，确保所有必要的配置都存在
+        if 'qwen' in model_path.lower() or 'Qwen' in str(config.__class__):
+            if not hasattr(config, 'vocab_size'):
+                config.vocab_size = 151936  # Qwen 默认词汇表大小
+            if not hasattr(config, 'hidden_size'):
+                config.hidden_size = 4096
+            if not hasattr(config, 'num_attention_heads'):
+                config.num_attention_heads = 32
+            if not hasattr(config, 'num_hidden_layers'):
+                config.num_hidden_layers = 32
+        
+        # 使用修复后的配置和参数加载模型
+        kwargs['config'] = config
+        
+        # 确保必要的参数存在
+        if 'trust_remote_code' not in kwargs:
+            kwargs['trust_remote_code'] = True
+        if 'torch_dtype' not in kwargs:
+            kwargs['torch_dtype'] = torch.float16
+            
+        model = AutoModelForCausalLM.from_pretrained(model_path, **kwargs)
+        return model
+        
+    except Exception as e:
+        logger.error(f"使用补丁方法加载模型失败: {e}")
+        raise e
+
 def main():
     # 解析参数
     parser = transformers.HfArgumentParser((ModelArguments, DataArguments, CustomTrainingArguments))
@@ -445,8 +506,8 @@ def main():
     
     # 尝试不同的加载方案
     loading_strategies = [
-        # 方案1: 基础加载，不使用 device_map 和 attn_implementation
-        base_kwargs,
+        # 方案1: 基础加载，添加配置修复
+        {**base_kwargs, "trust_remote_code": True, "torch_dtype": torch.float16},
         
         # 方案2: 添加 low_cpu_mem_usage
         {**base_kwargs, "low_cpu_mem_usage": True},
@@ -462,17 +523,63 @@ def main():
     ]
     
     model = None
-    for i, kwargs in enumerate(loading_strategies, 1):
-        try:
-            logger.info(f"尝试加载方案 {i}: {list(kwargs.keys())}")
-            model = AutoModelForCausalLM.from_pretrained(model_path, **kwargs)
-            logger.info(f"✅ 方案 {i} 加载成功")
-            break
-        except Exception as e:
-            logger.warning(f"❌ 方案 {i} 失败: {e}")
-            if i == len(loading_strategies):
-                logger.error(f"所有加载方案都失败，最后错误: {e}")
-                raise e
+    
+    # 首先尝试使用补丁方法加载
+    try:
+        logger.info("🔧 尝试使用补丁方法加载模型（推荐方案）")
+        model = load_model_with_patch(model_path, **base_kwargs)
+        logger.info("✅ 补丁方法加载成功！")
+    except Exception as patch_error:
+        logger.warning(f"❌ 补丁方法失败: {patch_error}")
+        logger.info("继续尝试其他加载方案...")
+        
+        # 如果补丁方法失败，回退到原始的多方案加载
+        for i, kwargs in enumerate(loading_strategies, 1):
+            try:
+                logger.info(f"尝试加载方案 {i}: {list(kwargs.keys())}")
+                
+                # 特殊处理：在加载前设置环境变量来避免配置问题
+                import os
+                os.environ["TRANSFORMERS_VERBOSITY"] = "error"
+                
+                # 先尝试加载配置并修复可能的None值
+                config = AutoConfig.from_pretrained(model_path, trust_remote_code=True)
+                
+                # 修复可能导致错误的None值
+                if hasattr(config, 'attn_implementation') and config.attn_implementation is None:
+                    config.attn_implementation = "eager"
+                if hasattr(config, 'pretraining_tp') and config.pretraining_tp is None:
+                    config.pretraining_tp = 1
+                if hasattr(config, '_name_or_path') and config._name_or_path is None:
+                    config._name_or_path = model_path
+                    
+                # 使用修复后的配置加载模型
+                kwargs["config"] = config
+                model = AutoModelForCausalLM.from_pretrained(model_path, **kwargs)
+                logger.info(f"✅ 方案 {i} 加载成功")
+                break
+            except Exception as e:
+                logger.warning(f"❌ 方案 {i} 失败: {e}")
+                if i == len(loading_strategies):
+                    # 如果所有方案都失败，尝试最后的备用方案
+                    try:
+                        logger.info("尝试备用方案：使用AutoModel而不是AutoModelForCausalLM")
+                        from transformers import AutoModel
+                        model = AutoModel.from_pretrained(
+                            model_path,
+                            trust_remote_code=True,
+                            torch_dtype=torch.float16,
+                            low_cpu_mem_usage=True
+                        )
+                        logger.info("✅ 备用方案加载成功")
+                        break
+                    except Exception as e2:
+                        logger.error(f"所有加载方案都失败，最后错误: {e2}")
+                        logger.error("建议解决方案:")
+                        logger.error("1. 检查模型文件是否完整")
+                        logger.error("2. 尝试使用不同的模型: 'Qwen/Qwen2-7B-Instruct'")
+                        logger.error("3. 或升级transformers库: pip install transformers>=4.51.0")
+                        raise e
     
     # 如果使用QLoRA，准备模型进行k-bit训练
     if model_args.use_qlora:
