@@ -206,7 +206,17 @@ def main():
     if len(sys.argv) >= 3 and sys.argv[1] == '--config_file':
         config_file = sys.argv[2]
         logger.info(f"使用配置文件: {config_file}")
-        model_args, data_args, training_args = parser.parse_json_file(json_file=config_file)
+        
+        # 读取JSON配置文件并过滤掉非参数字段
+        import json
+        with open(config_file, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+        
+        # 过滤掉以下划线开头的字段（通常是注释或文档字段）
+        filtered_config = {k: v for k, v in config.items() if not k.startswith('_')}
+        logger.info(f"过滤后的配置参数: {list(filtered_config.keys())}")
+        
+        model_args, data_args, training_args = parser.parse_dict(filtered_config)
     else:
         model_args, data_args, training_args = parser.parse_args_into_dataclasses()
     
