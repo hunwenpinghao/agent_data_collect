@@ -478,7 +478,7 @@ def main():
         )
     else:
         logger.info("未指定验证数据，使用训练数据作为验证集")
-        eval_dataset = train_dataset
+    eval_dataset = train_dataset
     
     # 数据整理器
     data_collator = DataCollatorForSeq2Seq(
