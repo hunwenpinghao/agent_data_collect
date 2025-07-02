@@ -25,7 +25,7 @@ try:
         BitsAndBytesConfig
     )
     from torch.utils.data import Dataset
-    from modelscope import snapshot_download
+    # 移除modelscope导入，直接使用transformers
     from peft import (
         LoraConfig,
         TaskType,
@@ -37,7 +37,7 @@ try:
 except ImportError as e:
     print(f"导入错误: {e}")
     print("请确保安装了正确版本的依赖包:")
-    print("pip install torch==2.1.0 transformers==4.37.0 modelscope peft bitsandbytes")
+    print("pip install torch==2.1.0 transformers>=4.36.2 peft bitsandbytes")
     raise
 
 # 设置日志
@@ -224,15 +224,11 @@ class SFTDataset(Dataset):
         
         return model_inputs
 
-def download_model(model_name: str, cache_dir: str = "./models") -> str:
-    """从ModelScope下载模型"""
-    try:
-        model_dir = snapshot_download(model_name, cache_dir=cache_dir)
-        logger.info(f"模型下载完成: {model_dir}")
-        return model_dir
-    except Exception as e:
-        logger.error(f"模型下载失败: {e}")
-        raise
+def get_model_path(model_name: str, cache_dir: str = "./models") -> str:
+    """获取模型路径，支持Hugging Face模型直接下载"""
+    logger.info(f"准备加载模型: {model_name}")
+    # 直接返回模型名称，transformers会自动处理下载和缓存
+    return model_name
 
 def create_quantization_config(model_args: ModelArguments) -> Optional[BitsAndBytesConfig]:
     """创建量化配置"""
@@ -318,16 +314,17 @@ def main():
     # 创建输出目录
     os.makedirs(training_args.output_dir, exist_ok=True)
     
-    # 下载模型
-    logger.info("正在下载模型...")
-    model_path = download_model(model_args.model_name_or_path, model_args.cache_dir)
+    # 获取模型路径
+    logger.info("准备加载模型...")
+    model_path = get_model_path(model_args.model_name_or_path, model_args.cache_dir)
     
     # 加载tokenizer
     logger.info("加载tokenizer...")
     tokenizer = AutoTokenizer.from_pretrained(
         model_path,
         trust_remote_code=True,
-        use_fast=False
+        use_fast=False,
+        cache_dir=model_args.cache_dir
     )
     
     # 确保有pad token
@@ -342,6 +339,8 @@ def main():
     model_kwargs = {
         "trust_remote_code": True,
         "device_map": "auto",
+        "cache_dir": model_args.cache_dir,
+        "attn_implementation": "eager",  # 避免flash attention兼容性问题
     }
     
     if quantization_config is not None:
