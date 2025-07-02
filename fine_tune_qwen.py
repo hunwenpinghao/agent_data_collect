@@ -41,14 +41,8 @@ try:
     )
     from torch.utils.data import Dataset
     
-    # 优先使用ModelScope作为备选方案
-    USE_MODELSCOPE = False
-    try:
-        from modelscope import snapshot_download
-        USE_MODELSCOPE = True
-        print("✅ ModelScope: 导入成功，可作为备选下载方案")
-    except ImportError:
-        print("⚠️  ModelScope: 未安装，将使用HuggingFace镜像")
+    # ModelScope将在需要时延迟导入，避免启动时的兼容性问题
+    print("📦 ModelScope: 将在需要时动态导入")
     
     from peft import (
         LoraConfig,
@@ -250,57 +244,31 @@ class SFTDataset(Dataset):
         return model_inputs
 
 def get_model_path(model_name: str, cache_dir: str = "./models") -> str:
-    """获取模型路径，支持HuggingFace镜像和ModelScope备选方案"""
+    """获取模型路径，优先使用本地模型，其次使用HuggingFace镜像"""
     logger.info(f"准备加载模型: {model_name}")
     
     # 创建缓存目录
     os.makedirs(cache_dir, exist_ok=True)
     
-    # 首先尝试HuggingFace镜像
-    try:
-        import requests
-        # 简单测试HuggingFace连接
-        logger.info("测试HuggingFace镜像连接...")
-        hf_endpoint = os.environ.get('HF_ENDPOINT', 'https://huggingface.co')
-        test_url = f"{hf_endpoint}/{model_name}/resolve/main/config.json"
-        response = requests.head(test_url, timeout=10)
-        if response.status_code == 200:
-            logger.info("✅ HuggingFace镜像连接成功")
-            return model_name
-        else:
-            raise Exception(f"HTTP {response.status_code}")
-    except Exception as hf_error:
-        logger.warning(f"HuggingFace镜像连接失败: {hf_error}")
-        
-        # 备选方案：使用ModelScope
-        if USE_MODELSCOPE:
-            try:
-                logger.info("尝试使用ModelScope下载...")
-                
-                # ModelScope的模型名称映射
-                modelscope_name_map = {
-                    "Qwen/Qwen2.5-0.5B-Instruct": "qwen/Qwen2.5-0.5B-Instruct",
-                    "Qwen/Qwen2.5-1.5B-Instruct": "qwen/Qwen2.5-1.5B-Instruct",
-                    "Qwen/Qwen2.5-3B-Instruct": "qwen/Qwen2.5-3B-Instruct",
-                    "Qwen/Qwen2.5-7B-Instruct": "qwen/Qwen2.5-7B-Instruct",
-                }
-                
-                modelscope_name = modelscope_name_map.get(model_name, model_name.replace("Qwen/", "qwen/"))
-                model_dir = snapshot_download(modelscope_name, cache_dir=cache_dir)
-                logger.info(f"✅ ModelScope下载成功: {model_dir}")
-                return model_dir
-            except Exception as ms_error:
-                logger.error(f"ModelScope下载也失败: {ms_error}")
-        
-        # 所有方案都失败
-        logger.error("所有下载方案都失败，请检查网络连接或手动下载模型")
-        raise ConnectionError(
-            "无法下载模型，请尝试以下解决方案:\n"
-            "1. 检查网络连接\n"
-            "2. 安装ModelScope: pip install modelscope\n"
-            "3. 使用代理访问HuggingFace\n"
-            "4. 手动下载模型到本地"
-        )
+    # 首先检查是否有本地模型
+    local_model_paths = [
+        f"models/{model_name.split('/')[-1]}",  # models/Qwen2.5-0.5B-Instruct
+        f"{cache_dir}/{model_name.split('/')[-1]}",  # 自定义缓存目录
+        model_name  # 如果已经是本地路径
+    ]
+    
+    for local_path in local_model_paths:
+        if os.path.exists(local_path) and os.path.exists(os.path.join(local_path, "config.json")):
+            logger.info(f"✅ 发现本地模型: {local_path}")
+            return os.path.abspath(local_path)
+    
+    # 如果没有本地模型，直接使用模型名称，让transformers处理下载
+    # HuggingFace镜像已在启动时设置
+    logger.info("📥 将从HuggingFace镜像下载模型...")
+    logger.info(f"   镜像源: {os.environ.get('HF_ENDPOINT', 'https://huggingface.co')}")
+    logger.info("   如果下载失败，请运行: ./download_model.sh")
+    
+    return model_name
 
 def create_quantization_config(model_args: ModelArguments) -> Optional[BitsAndBytesConfig]:
     """创建量化配置"""
