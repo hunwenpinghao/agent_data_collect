@@ -1,6 +1,6 @@
 {
-    "_description": "LoRA微调配置示例",
-    "_usage": "python fine_tune_qwen.py --config_file configs/train_config_lora.json",
+    "_description": "简化的训练配置 - 不进行评估",
+    "_usage": "python fine_tune_qwen.py --config_file configs/train_config_simple.json",
     
     "model_name_or_path": "Qwen/Qwen2.5-0.5B-Instruct",
     "cache_dir": "./models",
@@ -14,7 +14,7 @@
     "data_path": "data/zhc_store_recommend_doubao.jsonl",
     "max_seq_length": 2048,
     
-    "output_dir": "./output_qwen_lora",
+    "output_dir": "./output_qwen_simple",
     "overwrite_output_dir": true,
     "per_device_train_batch_size": 4,
     "per_device_eval_batch_size": 4,
@@ -25,15 +25,12 @@
     "warmup_steps": 100,
     "logging_steps": 10,
     "save_steps": 500,
-    "eval_steps": 500,
-    "evaluation_strategy": "steps",
+    "evaluation_strategy": "no",
     "save_strategy": "steps",
     "save_total_limit": 3,
-    "load_best_model_at_end": true,
-    "metric_for_best_model": "eval_loss",
-    "greater_is_better": false,
+    "load_best_model_at_end": false,
     "dataloader_num_workers": 4,
     "remove_unused_columns": false,
     "fp16": true,
     "seed": 42
-}
+} 

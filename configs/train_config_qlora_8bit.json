@@ -12,7 +12,7 @@
     "lora_target_modules": "q_proj,k_proj,v_proj,o_proj",
     "quantization_bit": 8,
     
-    "data_path": "dataset/zhc_store_recommend_doubao_refined.jsonl",
+    "data_path": "data/zhc_store_recommend_doubao.jsonl",
     "max_seq_length": 2048,
     
     "output_dir": "./output_qwen_qlora_8bit",
