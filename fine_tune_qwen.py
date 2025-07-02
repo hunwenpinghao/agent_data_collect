@@ -200,7 +200,15 @@ def download_model(model_name: str, cache_dir: str = "./models") -> str:
 def main():
     # 解析参数
     parser = transformers.HfArgumentParser((ModelArguments, DataArguments, TrainingArguments))
-    model_args, data_args, training_args = parser.parse_args_into_dataclasses()
+    
+    # 检查是否有配置文件参数
+    import sys
+    if len(sys.argv) >= 3 and sys.argv[1] == '--config_file':
+        config_file = sys.argv[2]
+        logger.info(f"使用配置文件: {config_file}")
+        model_args, data_args, training_args = parser.parse_json_file(json_file=config_file)
+    else:
+        model_args, data_args, training_args = parser.parse_args_into_dataclasses()
     
     # 设置随机种子
     set_seed(training_args.seed if hasattr(training_args, 'seed') else 42)
