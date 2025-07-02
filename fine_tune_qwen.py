@@ -398,17 +398,18 @@ def load_model_with_patch(model_path: str, **kwargs):
         raise e
 
 def main():
+    # 导入必要的模块
+    import sys
+    
     # 解析参数
     parser = transformers.HfArgumentParser((ModelArguments, DataArguments, CustomTrainingArguments))
     
     # 检查是否有配置文件参数
-    import sys
     if len(sys.argv) >= 3 and sys.argv[1] == '--config_file':
         config_file = sys.argv[2]
         logger.info(f"使用配置文件: {config_file}")
         
         # 读取JSON配置文件并过滤掉非参数字段
-        import json
         with open(config_file, 'r', encoding='utf-8') as f:
             config = json.load(f)
         
@@ -539,7 +540,6 @@ def main():
                 logger.info(f"尝试加载方案 {i}: {list(kwargs.keys())}")
                 
                 # 特殊处理：在加载前设置环境变量来避免配置问题
-                import os
                 os.environ["TRANSFORMERS_VERBOSITY"] = "error"
                 
                 # 先尝试加载配置并修复可能的None值
