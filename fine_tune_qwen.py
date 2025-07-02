@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 class ModelArguments:
     """模型相关参数"""
     model_name_or_path: Optional[str] = field(
-        default="qwen/Qwen3-0.5B-Instruct",
+        default="Qwen/Qwen2.5-0.5B-Instruct",
         metadata={"help": "模型名称或路径"}
     )
     cache_dir: Optional[str] = field(
