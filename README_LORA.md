@@ -39,7 +39,7 @@ pip install -r requirements_stable.txt
 
 ### LoRA 微调配置
 ```bash
-python fine_tune_qwen.py --config_file train_config_lora.json
+python fine_tune_qwen.py --config_file configs/train_config_lora.json
 ```
 
 关键参数：
@@ -53,12 +53,12 @@ python fine_tune_qwen.py --config_file train_config_lora.json
 
 #### 4位量化 (推荐)
 ```bash
-python fine_tune_qwen.py --config_file train_config_qlora.json
+python fine_tune_qwen.py --config_file configs/train_config_qlora.json
 ```
 
 #### 8位量化
 ```bash 
-python fine_tune_qwen.py --config_file train_config_qlora_8bit.json
+python fine_tune_qwen.py --config_file configs/train_config_qlora_8bit.json
 ```
 
 关键参数：
@@ -112,11 +112,14 @@ python fine_tune_qwen.py \
 
 ### 配置文件方式（推荐）
 ```bash
+# 全参数微调
+python fine_tune_qwen.py --config_file configs/train_config_full.json
+
 # LoRA微调
-python fine_tune_qwen.py --config_file train_config_lora.json
+python fine_tune_qwen.py --config_file configs/train_config_lora.json
 
 # QLoRA微调  
-python fine_tune_qwen.py --config_file train_config_qlora.json
+python fine_tune_qwen.py --config_file configs/train_config_qlora.json
 ```
 
 ## 📤 模型保存与加载

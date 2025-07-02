@@ -1,6 +1,6 @@
 {
     "_description": "LoRA微调配置示例",
-    "_usage": "python fine_tune_qwen.py --config_file train_config_lora.json",
+    "_usage": "python fine_tune_qwen.py --config_file configs/train_config_lora.json",
     
     "model_name_or_path": "Qwen/Qwen2.5-0.5B-Instruct",
     "cache_dir": "./models",
@@ -34,6 +34,4 @@
     "greater_is_better": false,
     "dataloader_num_workers": 4,
     "remove_unused_columns": false,
-    "fp16": true,
-    "seed": 42
-} 
+ 
