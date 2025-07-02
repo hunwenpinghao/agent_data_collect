@@ -569,7 +569,6 @@ def main():
                 logger.info(f"尝试加载方案 {i}: {list(kwargs.keys())}")
                 
                 # 特殊处理：在加载前设置环境变量来避免配置问题
-                import os
                 os.environ["TRANSFORMERS_VERBOSITY"] = "error"
                 
                 # 先尝试加载配置并修复可能的None值
