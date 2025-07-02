@@ -1,6 +1,6 @@
 {
     "model_name_or_path": "Qwen/Qwen2.5-0.5B-Instruct",
-    "data_path": "dataset/zhc_store_recommend_doubao_refined.jsonl,dataset/zhc_store_recommend_reason_doubao.jsonl",
+    "data_path": "data/zhc_store_recommend_doubao_refined.jsonl,data/zhc_store_recommend_reason_doubao.jsonl",
     "output_dir": "./output_qwen_multi",
     "overwrite_output_dir": true,
     "max_seq_length": 2048,
@@ -27,9 +27,9 @@
     "report_to": "tensorboard",
     "_comment": "多文件训练示例配置",
     "_usage": {
-        "single_file": "dataset/zhc_store_recommend_doubao_refined.jsonl",
-        "multi_files": "dataset/zhc_store_recommend_doubao_refined.jsonl,dataset/zhc_store_recommend_reason_doubao.jsonl",
-        "with_spaces": "dataset/zhc_store_recommend_doubao_refined.jsonl, dataset/zhc_store_recommend_reason_doubao.jsonl",
+        "single_file": "data/zhc_store_recommend_doubao_refined.jsonl",
+        "multi_files": "data/zhc_store_recommend_doubao_refined.jsonl,data/zhc_store_recommend_reason_doubao.jsonl",
+        "with_spaces": "data/zhc_store_recommend_doubao_refined.jsonl, data/zhc_store_recommend_reason_doubao.jsonl",
         "note": "文件路径中的空格会被自动去除"
     }
 } 
