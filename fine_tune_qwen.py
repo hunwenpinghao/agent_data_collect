@@ -438,7 +438,11 @@ def main():
     else:
         model_kwargs["torch_dtype"] = torch.float16 if training_args.fp16 else torch.float32
     
-    model = AutoModelForCausalLM.from_pretrained(model_path, **model_kwargs)
+    try:
+        model = AutoModelForCausalLM.from_pretrained(model_path, **model_kwargs)
+    except Exception as e:
+        logger.error(f"❌ 模型加载失败: {e}")
+        logger.info(f"model_kwargs: {model_kwargs}, model_path: {model_path}")
     
     # 如果使用QLoRA，准备模型进行k-bit训练
     if model_args.use_qlora:
