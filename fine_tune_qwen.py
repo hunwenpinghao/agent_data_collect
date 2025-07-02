@@ -121,7 +121,7 @@ class DataArguments:
     )
 
 @dataclass
-class TrainingArguments(TrainingArguments):
+class CustomTrainingArguments(TrainingArguments):
     """训练相关参数"""
     output_dir: str = field(default="./output_qwen")
     overwrite_output_dir: bool = field(default=True)
@@ -332,7 +332,7 @@ def find_all_linear_names(model):
 
 def main():
     # 解析参数
-    parser = transformers.HfArgumentParser((ModelArguments, DataArguments, TrainingArguments))
+    parser = transformers.HfArgumentParser((ModelArguments, DataArguments, CustomTrainingArguments))
     
     # 检查是否有配置文件参数
     import sys
