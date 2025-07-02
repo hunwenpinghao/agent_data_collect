@@ -258,6 +258,7 @@ def get_model_path(model_name: str, cache_dir: str = "./models") -> str:
     
     # 首先检查是否有本地模型
     local_model_paths = [
+        f"{cache_dir}/{model_name}",
         f"{cache_dir}/{model_name.split('/')[-1]}",  # 自定义缓存目录
         f"models/{model_name.split('/')[-1]}",  # models/Qwen2.5-0.5B-Instruct
         model_name  # 如果已经是本地路径
