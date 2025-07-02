@@ -346,6 +346,32 @@ def load_model_with_patch(model_path: str, **kwargs):
         from transformers import AutoConfig, AutoModelForCausalLM
         import torch
         
+        # 修复 transformers 库中 ALL_PARALLEL_STYLES 的 None 值问题
+        try:
+            # 导入并应用修复
+            from fix_transformers_parallel_styles import fix_transformers_parallel_styles
+            fix_transformers_parallel_styles()
+        except ImportError:
+            # 如果无法导入修复脚本，使用内联修复
+            try:
+                import sys
+                import importlib
+                if 'transformers.modeling_utils' in sys.modules:
+                    modeling_utils = sys.modules['transformers.modeling_utils']
+                else:
+                    transformers_module = importlib.import_module('transformers')
+                    modeling_utils = getattr(transformers_module, 'modeling_utils', None)
+                
+                if modeling_utils and (not hasattr(modeling_utils, 'ALL_PARALLEL_STYLES') or 
+                                      getattr(modeling_utils, 'ALL_PARALLEL_STYLES', None) is None):
+                    # 设置默认的并行样式列表
+                    setattr(modeling_utils, 'ALL_PARALLEL_STYLES', ["tp", "dp", "pp", "cp"])
+                    logger.info("✅ 修复了 ALL_PARALLEL_STYLES 的 None 值问题")
+            except Exception as inline_error:
+                logger.warning(f"内联修复失败: {inline_error}")
+        except Exception as patch_error:
+            logger.warning(f"无法修复 ALL_PARALLEL_STYLES: {patch_error}")
+        
         # 加载配置
         config = AutoConfig.from_pretrained(model_path, trust_remote_code=True)
         
@@ -389,6 +415,10 @@ def load_model_with_patch(model_path: str, **kwargs):
             kwargs['trust_remote_code'] = True
         if 'torch_dtype' not in kwargs:
             kwargs['torch_dtype'] = torch.float16
+        
+        # 强制设置一些可能导致问题的参数
+        kwargs['attn_implementation'] = 'eager'
+        kwargs['low_cpu_mem_usage'] = True
             
         model = AutoModelForCausalLM.from_pretrained(model_path, **kwargs)
         return model
