@@ -16,7 +16,7 @@ if [ -f "requirements_stable.txt" ]; then
     pip cache purge
 
     # 重新安装与PyTorch 2.1.0兼容的版本
-    pip install flash-attn --no-cache-dir --no-build-isolation
+    pip install flash-attn --no-cache-dir --no-build-isolation -i https://pypi.tuna.tsinghua.edu.cn/simple
 
     echo "使用稳定版本依赖..."
     pip install -r requirements_stable.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
