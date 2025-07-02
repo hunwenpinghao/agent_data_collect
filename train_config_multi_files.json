@@ -1,5 +1,5 @@
 {
-    "model_name_or_path": "qwen/Qwen3-0.5B-Instruct",
+    "model_name_or_path": "Qwen/Qwen2.5-0.5B-Instruct",
     "data_path": "dataset/zhc_store_recommend_doubao_refined.jsonl,dataset/zhc_store_recommend_reason_doubao.jsonl",
     "output_dir": "./output_qwen_multi",
     "overwrite_output_dir": true,
