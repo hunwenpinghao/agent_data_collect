@@ -27,6 +27,10 @@ def setup_china_mirror():
 # 首先尝试设置镜像源
 setup_china_mirror()
 
+# 设置兼容性环境变量
+os.environ.setdefault('TOKENIZERS_PARALLELISM', 'false')
+os.environ.setdefault('TRANSFORMERS_NO_ADVISORY_WARNINGS', 'true')
+
 # 设置兼容性导入
 try:
     import transformers
@@ -426,24 +430,49 @@ def main():
     
     # 加载模型
     logger.info("加载模型...")
-    model_kwargs = {
+    
+    # 基础参数
+    base_kwargs = {
         "trust_remote_code": True,
-        "device_map": "auto",
         "cache_dir": model_args.cache_dir,
-        "attn_implementation": "eager",  # 避免flash attention兼容性问题
     }
     
     if quantization_config is not None:
-        model_kwargs["quantization_config"] = quantization_config
-        model_kwargs["torch_dtype"] = torch.float16
+        base_kwargs["quantization_config"] = quantization_config
+        base_kwargs["torch_dtype"] = torch.float16
     else:
-        model_kwargs["torch_dtype"] = torch.float16 if training_args.fp16 else torch.float32
+        base_kwargs["torch_dtype"] = torch.float16 if training_args.fp16 else torch.float32
     
-    try:
-        model = AutoModelForCausalLM.from_pretrained(model_path, **model_kwargs)
-    except Exception as e:
-        logger.error(f"❌ 模型加载失败: {e}")
-        logger.info(f"model_kwargs: {model_kwargs}, model_path: {model_path}")
+    # 尝试不同的加载方案
+    loading_strategies = [
+        # 方案1: 基础加载，不使用 device_map 和 attn_implementation
+        base_kwargs,
+        
+        # 方案2: 添加 low_cpu_mem_usage
+        {**base_kwargs, "low_cpu_mem_usage": True},
+        
+        # 方案3: 使用 device_map="cpu"
+        {**base_kwargs, "device_map": "cpu"},
+        
+        # 方案4: 添加 attn_implementation
+        {**base_kwargs, "attn_implementation": "eager"},
+        
+        # 方案5: 完整参数
+        {**base_kwargs, "device_map": "auto", "attn_implementation": "eager"},
+    ]
+    
+    model = None
+    for i, kwargs in enumerate(loading_strategies, 1):
+        try:
+            logger.info(f"尝试加载方案 {i}: {list(kwargs.keys())}")
+            model = AutoModelForCausalLM.from_pretrained(model_path, **kwargs)
+            logger.info(f"✅ 方案 {i} 加载成功")
+            break
+        except Exception as e:
+            logger.warning(f"❌ 方案 {i} 失败: {e}")
+            if i == len(loading_strategies):
+                logger.error(f"所有加载方案都失败，最后错误: {e}")
+                raise e
     
     # 如果使用QLoRA，准备模型进行k-bit训练
     if model_args.use_qlora:
