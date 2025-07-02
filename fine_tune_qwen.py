@@ -114,6 +114,10 @@ class DataArguments:
         default=2048,
         metadata={"help": "最大序列长度"}
     )
+    eval_data_path: Optional[str] = field(
+        default=None,
+        metadata={"help": "验证数据文件路径，可选，支持单个文件或多个文件（逗号分隔）"}
+    )
 
 @dataclass
 class TrainingArguments(TrainingArguments):
@@ -464,8 +468,17 @@ def main():
         max_seq_length=data_args.max_seq_length
     )
     
-    # 创建验证数据集（这里简单地使用训练数据的一部分）
-    eval_dataset = train_dataset
+    # 创建验证数据集
+    if data_args.eval_data_path:
+        logger.info(f"使用验证数据: {data_args.eval_data_path}")
+        eval_dataset = SFTDataset(
+            data_path=data_args.eval_data_path,
+            tokenizer=tokenizer,
+            max_seq_length=data_args.max_seq_length
+        )
+    else:
+        logger.info("未指定验证数据，使用训练数据作为验证集")
+        eval_dataset = train_dataset
     
     # 数据整理器
     data_collator = DataCollatorForSeq2Seq(
