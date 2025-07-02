@@ -360,12 +360,55 @@ def main():
     
     # 加载tokenizer
     logger.info("加载tokenizer...")
-    tokenizer = AutoTokenizer.from_pretrained(
-        model_path,
-        trust_remote_code=True,
-        use_fast=False,
-        cache_dir=model_args.cache_dir
-    )
+    logger.info(f"模型路径: {model_path}")
+    logger.info(f"缓存目录: {model_args.cache_dir}")
+    
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(
+            model_path,
+            trust_remote_code=True,
+            use_fast=False,
+            cache_dir=model_args.cache_dir
+        )
+        logger.info("✅ Tokenizer加载成功")
+    except Exception as e:
+        logger.error(f"❌ Tokenizer加载失败: {e}")
+        logger.info("尝试解决方案...")
+        
+        # 尝试使用不同的tokenizer配置
+        try:
+            logger.info("尝试方案1: 使用fast tokenizer")
+            tokenizer = AutoTokenizer.from_pretrained(
+                model_path,
+                trust_remote_code=True,
+                use_fast=True,
+                cache_dir=model_args.cache_dir
+            )
+            logger.info("✅ Fast tokenizer加载成功")
+        except Exception as e2:
+            logger.error(f"❌ Fast tokenizer也失败: {e2}")
+            
+            # 如果是Qwen模型，尝试使用备选tokenizer
+            if "Qwen" in model_path:
+                try:
+                    logger.info("尝试方案2: 使用Qwen2Tokenizer")
+                    from transformers import Qwen2Tokenizer
+                    tokenizer = Qwen2Tokenizer.from_pretrained(
+                        model_path,
+                        cache_dir=model_args.cache_dir
+                    )
+                    logger.info("✅ Qwen2Tokenizer加载成功")
+                except Exception as e3:
+                    logger.error(f"❌ Qwen2Tokenizer也失败: {e3}")
+                    
+                    logger.error("所有tokenizer加载方案都失败，请检查模型文件是否完整")
+                    logger.info("建议解决方案:")
+                    logger.info("1. 清空缓存目录: rm -rf ./models")
+                    logger.info("2. 重新下载模型: ./download_model.sh")
+                    logger.info("3. 或使用本地模型路径")
+                    raise e3
+            else:
+                raise e2
     
     # 确保有pad token
     if tokenizer.pad_token is None:
