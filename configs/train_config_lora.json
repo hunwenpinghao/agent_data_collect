@@ -34,4 +34,6 @@
     "greater_is_better": false,
     "dataloader_num_workers": 4,
     "remove_unused_columns": false,
- 
+    "fp16": true,
+    "seed": 42
+}
