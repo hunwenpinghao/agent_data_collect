@@ -40,6 +40,7 @@ try:
         BitsAndBytesConfig
     )
     from torch.utils.data import Dataset
+    from transformers.trainer_utils import IntervalStrategy, SaveStrategy
     
     # ModelScope将在需要时延迟导入，避免启动时的兼容性问题
     print("📦 ModelScope: 将在需要时动态导入")
@@ -134,8 +135,8 @@ class TrainingArguments(TrainingArguments):
     logging_steps: int = field(default=10)
     save_steps: int = field(default=500)
     eval_steps: int = field(default=500)
-    evaluation_strategy: str = field(default="steps")
-    save_strategy: str = field(default="steps")
+    evaluation_strategy: IntervalStrategy = field(default=IntervalStrategy.STEPS)
+    save_strategy: SaveStrategy = field(default=SaveStrategy.STEPS)
     save_total_limit: int = field(default=3)
     load_best_model_at_end: bool = field(default=True)
     metric_for_best_model: str = field(default="eval_loss")
