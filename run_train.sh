@@ -10,6 +10,14 @@ echo "检查是否存在版本兼容性问题..."
 
 # 首先尝试稳定版本
 if [ -f "requirements_stable.txt" ]; then
+    # Uninstall problematic flash attention
+    pip uninstall flash-attn -y
+    # 清理缓存
+    pip cache purge
+
+    # 重新安装与PyTorch 2.1.0兼容的版本
+    pip install flash-attn --no-cache-dir --no-build-isolation
+
     echo "使用稳定版本依赖..."
     pip install -r requirements_stable.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 else
