@@ -354,7 +354,19 @@ def apply_transformers_patch():
                 if hasattr(self.config, 'pretraining_tp') and self.config.pretraining_tp is None:
                     self.config.pretraining_tp = 1
                 
-                # 检查其他可能的None值
+                # 修复张量并行样式错误 - 检查并替换不支持的值
+                tensor_parallel_attrs = ['tensor_parallel_style', 'parallel_style']
+                supported_styles = ['tp', 'dp', 'pp', 'cp']
+                
+                for attr in tensor_parallel_attrs:
+                    if hasattr(self.config, attr):
+                        current_value = getattr(self.config, attr)
+                        if current_value is not None and current_value not in supported_styles:
+                            # 将不支持的值（如'colwise'）替换为'tp'
+                            setattr(self.config, attr, 'tp')
+                            logger.debug(f"修复张量并行样式: {attr} = {current_value} -> tp")
+                
+                # 检查其他可能的None值和无效值
                 config_fixes = {
                     'attn_implementation': 'eager',
                     'rope_scaling': None,
@@ -362,6 +374,11 @@ def apply_transformers_patch():
                     'sliding_window': 4096,
                     'max_window_layers': 28,
                     'attention_dropout': 0.0,
+                    # 修复张量并行样式错误
+                    'tensor_parallel_style': 'tp',
+                    'parallel_style': 'tp', 
+                    'tensor_parallel': False,
+                    'sequence_parallel': False,
                 }
                 
                 for key, default_value in config_fixes.items():
@@ -418,6 +435,11 @@ def load_model_with_patch(model_path: str, **kwargs):
             'sliding_window': 4096,
             'max_window_layers': 28,
             'layer_types': None,
+            # 修复张量并行相关错误
+            'tensor_parallel_style': 'tp',  # 只支持 'tp', 'dp', 'pp', 'cp'
+            'parallel_style': 'tp',
+            'tensor_parallel': False,
+            'sequence_parallel': False,
         }
         
         # 应用基础修复
@@ -447,12 +469,16 @@ def load_model_with_patch(model_path: str, **kwargs):
             for key, value in qwen_config.items():
                 setattr(config, key, value)
         
-        # 确保所有None值都被处理
-        logger.info("检查并清理所有None值...")
+        # 确保所有None值都被处理，并修复张量并行样式
+        logger.info("检查并清理所有None值和无效值...")
+        supported_styles = ['tp', 'dp', 'pp', 'cp']
+        
         for attr_name in dir(config):
             if not attr_name.startswith('_'):
                 try:
                     attr_value = getattr(config, attr_name)
+                    
+                    # 处理None值
                     if attr_value is None and attr_name in [
                         'pretraining_tp', 'rope_scaling', 'attention_dropout', 
                         'hidden_dropout', 'layer_types'
@@ -464,6 +490,13 @@ def load_model_with_patch(model_path: str, **kwargs):
                         elif attr_name == 'layer_types':
                             setattr(config, attr_name, None)  # 保持为None，但确保不会引起错误
                         logger.debug(f"  清理None值: {attr_name}")
+                    
+                    # 处理张量并行样式的无效值
+                    if attr_name in ['tensor_parallel_style', 'parallel_style'] and attr_value is not None:
+                        if attr_value not in supported_styles:
+                            setattr(config, attr_name, 'tp')
+                            logger.debug(f"  修复并行样式: {attr_name} = {attr_value} -> tp")
+                            
                 except:
                     continue
         
