@@ -689,7 +689,7 @@ def create_gradio_interface():
                 # 模型类型选择
                 model_type = gr.Radio(
                     choices=["base", "lora", "qlora", "full_ft"],
-                    value="base",
+                    value="lora",
                     label="模型类型",
                     info="base: 基础模型 | lora: LoRA适配器 | qlora: QLoRA适配器 | full_ft: 完整微调模型"
                 )
@@ -706,7 +706,7 @@ def create_gradio_interface():
                     value="./output_qwen_lora",
                     label="LoRA适配器路径",
                     info="LoRA/QLoRA适配器的保存路径",
-                    visible=False  # 默认为base模式，不显示
+                    visible=True  # 默认为lora模式，显示路径
                 )
                 
                 # 量化选项
@@ -814,9 +814,9 @@ def create_gradio_interface():
                     
                     stream_mode = gr.Checkbox(
                         label="⚡ 流式生成",
-                        value=False,  # 默认关闭，可以手动开启
-                        info="实时显示生成过程（重新启用）",
-                        interactive=True  # 重新启用交互
+                        value=True,  # 默认开启流式生成
+                        info="实时显示生成过程（默认启用）",
+                        interactive=True
                     )
         
         # 控制LoRA路径显示
@@ -956,7 +956,7 @@ def create_gradio_interface():
         gr.Markdown("""
         ---
         ### 📖 使用说明
-        1. **选择模型类型**：base(基础模型)、LoRA、QLoRA或完整微调(Full FT)
+        1. **选择模型类型**：默认为LoRA模式，也可选择base(基础模型)、QLoRA或完整微调(Full FT)
         2. **配置模型路径**：设置基础模型和LoRA适配器路径
         3. **选择量化方式**：可选择4bit或8bit量化以节省显存
         4. **加载模型**：点击"加载模型"按钮
@@ -969,8 +969,8 @@ def create_gradio_interface():
         - 温度越高生成越随机，越低越确定
         - Top-p和Top-k控制生成的多样性
         
-        ### ⚡ 流式生成（已重新启用）
-        - **实时显示**：开启流式生成可以实时看到模型的生成过程
+        ### ⚡ 流式生成（默认启用）
+        - **实时显示**：默认开启流式生成，实时看到模型的生成过程
         - **更好体验**：长回复时不需要等待，可以边生成边阅读
         - **批量生成**：使用优化的分批生成实现，平衡速度和稳定性
         - **可选功能**：可以关闭流式生成，使用传统的一次性生成
