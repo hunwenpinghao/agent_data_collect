@@ -228,7 +228,7 @@ class ModelInference:
             return "❌ 失败", error_msg
     
     def generate_response(self, prompt: str, max_length: int = 512, temperature: float = 0.7,
-                         top_p: float = 0.9, top_k: int = 50, repetition_penalty: float = 1.1) -> str:
+                         top_p: float = 0.9, top_k: int = 50, repetition_penalty: float = 1.1, debug: bool = False) -> str:
         """
         生成回复
         """
@@ -266,24 +266,105 @@ class ModelInference:
             # 解码输出
             generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
             
-            # 提取assistant的回复
-            assistant_start = generated_text.find("<|im_start|>assistant\n")
-            if assistant_start != -1:
-                assistant_start += len("<|im_start|>assistant\n")
-                response = generated_text[assistant_start:].strip()
-                
-                # 移除可能的结束标记
-                if response.endswith("<|im_end|>"):
-                    response = response[:-len("<|im_end|>")].strip()
-                
-                return response
-            else:
-                return generated_text.strip()
+            # 调试输出
+            if debug:
+                print(f"🔍 原始生成文本: {repr(generated_text)}")
+                print(f"🔍 输入提示: {repr(conversation)}")
+            
+            # 提取assistant的回复 - 改进的提取逻辑
+            response = generated_text
+            
+            # 方法1：基于对话格式提取
+            if "<|im_start|>assistant\n" in generated_text:
+                parts = generated_text.split("<|im_start|>assistant\n", 1)
+                if len(parts) > 1:
+                    response = parts[1]
+                    # 移除结束标记
+                    if "<|im_end|>" in response:
+                        response = response.split("<|im_end|>")[0]
+            
+            # 方法2：如果没有找到标准格式，尝试移除输入部分
+            elif conversation in generated_text:
+                response = generated_text.replace(conversation, "").strip()
+            
+            # 方法3：如果包含用户输入，移除用户输入部分
+            elif prompt in response:
+                # 找到用户输入后的内容
+                prompt_index = response.find(prompt)
+                if prompt_index != -1:
+                    # 从用户输入结束后开始提取
+                    after_prompt = response[prompt_index + len(prompt):].strip()
+                    if after_prompt:
+                        response = after_prompt
+            
+            # 清理回复文本
+            response = self._clean_response(response, conversation, prompt)
+            
+            # 调试输出
+            if debug:
+                print(f"🔍 清理后回复: {repr(response)}")
+            
+            # 如果回复为空或太短，返回友好消息
+            if not response or len(response.strip()) < 2:
+                return "抱歉，我无法生成有效的回复。请尝试调整参数或重新输入。"
+            
+            return response
                 
         except Exception as e:
             error_msg = f"❌ 生成失败: {str(e)}"
             logger.error(error_msg)
             return error_msg
+    
+    def _clean_response(self, response: str, conversation: str, prompt: str) -> str:
+        """
+        清理回复文本，移除不必要的格式标记和重复内容
+        """
+        # 移除对话格式标记
+        response = response.replace("<|im_start|>", "")
+        response = response.replace("<|im_end|>", "")
+        response = response.replace("user\n", "")
+        response = response.replace("assistant\n", "")
+        
+        # 移除可能的系统角色标记
+        response = response.replace("system\n", "")
+        response = response.replace("System:", "")
+        response = response.replace("User:", "")
+        response = response.replace("Assistant:", "")
+        
+        # 移除重复的输入内容
+        if prompt in response:
+            response = response.replace(prompt, "").strip()
+        
+        # 移除可能的对话开始符号
+        if response.startswith("user\n") or response.startswith("assistant\n"):
+            lines = response.split('\n', 1)
+            if len(lines) > 1:
+                response = lines[1]
+        
+        # 移除多余的换行和空格
+        response = response.strip()
+        
+        # 移除开头的冒号和空格
+        response = response.lstrip(': \n\t')
+        
+        # 如果回复太长，可能包含了多轮对话，只取第一部分
+        if len(response) > 1000:
+            # 查找可能的对话分割点
+            split_markers = [
+                "<|im_start|>user",
+                "<|im_start|>assistant", 
+                "user\n",
+                "assistant\n",
+                "\n\nuser:",
+                "\n\nassistant:"
+            ]
+            
+            for marker in split_markers:
+                if marker in response:
+                    response = response.split(marker)[0].strip()
+                    break
+        
+        return response
     
     def get_model_info(self) -> str:
         """获取当前模型信息"""
@@ -477,6 +558,14 @@ def create_gradio_interface():
                     step=0.1,
                     label="重复惩罚"
                 )
+                
+                # 调试选项
+                with gr.Row():
+                    debug_mode = gr.Checkbox(
+                        label="🔍 调试模式",
+                        value=False,
+                        info="显示详细的生成过程信息"
+                    )
         
         # 控制LoRA路径显示
         def update_lora_visibility(model_type_value):
@@ -514,14 +603,22 @@ def create_gradio_interface():
         )
         
         # 发送消息
-        def send_message(history, message, max_len, temp, top_p_val, top_k_val, rep_penalty):
+        def send_message(history, message, max_len, temp, top_p_val, top_k_val, rep_penalty, debug):
             if not message.strip():
                 return history, ""
             
             # 生成回复
             response = model_inference.generate_response(
-                message, max_len, temp, top_p_val, top_k_val, rep_penalty
+                message, max_len, temp, top_p_val, top_k_val, rep_penalty, debug
             )
+            
+            # 在调试模式下，添加额外信息
+            if debug:
+                response += f"\n\n[调试信息] 模型类型: {model_inference.model_type or '未加载'}"
+                if model_inference.loaded_model_path:
+                    response += f"\n[调试信息] 基础模型: {model_inference.loaded_model_path}"
+                if model_inference.loaded_lora_path:
+                    response += f"\n[调试信息] LoRA路径: {model_inference.loaded_lora_path}"
             
             # 更新对话历史
             history.append([message, response])
@@ -529,14 +626,14 @@ def create_gradio_interface():
         
         send_btn.click(
             fn=send_message,
-            inputs=[chatbot, user_input, max_length, temperature, top_p, top_k, repetition_penalty],
+            inputs=[chatbot, user_input, max_length, temperature, top_p, top_k, repetition_penalty, debug_mode],
             outputs=[chatbot, user_input]
         )
         
         # 回车发送
         user_input.submit(
             fn=send_message,
-            inputs=[chatbot, user_input, max_length, temperature, top_p, top_k, repetition_penalty],
+            inputs=[chatbot, user_input, max_length, temperature, top_p, top_k, repetition_penalty, debug_mode],
             outputs=[chatbot, user_input]
         )
         
@@ -578,6 +675,12 @@ def create_gradio_interface():
         - 量化可以显著减少显存使用，但可能略微影响质量
         - 温度越高生成越随机，越低越确定
         - Top-p和Top-k控制生成的多样性
+        
+        ### 🔧 问题排查
+        - **如果回复包含多余内容**：开启调试模式查看详细信息
+        - **如果回复不是期望的风格**：检查是否加载了正确的微调模型
+        - **如果模型回复"我是通义千问"**：说明加载的是基础模型，请检查LoRA路径
+        - **回复格式异常**：尝试调整温度和重复惩罚参数
         """)
     
     return demo
