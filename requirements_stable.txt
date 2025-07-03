@@ -1,6 +1,6 @@
-torch==2.1.0
-transformers==4.37.0
-modelscope==1.9.5
+torch==2.3.1
+transformers==4.51.3
+modelscope==1.10.0
 datasets==2.13.0
 accelerate==0.24.1
 peft==0.6.2
