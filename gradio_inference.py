@@ -419,7 +419,8 @@ def create_gradio_interface():
                 chatbot = gr.Chatbot(
                     label="对话历史",
                     height=400,
-                    avatar_images=["👤", "🤖"]
+                    avatar_images=["👤", "🤖"],
+                    type="tuples"
                 )
                 
                 # 用户输入
@@ -591,9 +592,7 @@ def main():
         server_name="0.0.0.0",
         server_port=7860,
         share=False,
-        show_error=True,
-        show_tips=True,
-        enable_queue=True
+        show_error=True
     )
 
 if __name__ == "__main__":

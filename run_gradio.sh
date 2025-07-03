@@ -38,6 +38,29 @@ python3 -c "import peft; print(f'PEFT版本: {peft.__version__}')" 2>/dev/null |
 
 echo "✅ 所有依赖检查完成"
 
+# 检查Gradio兼容性
+echo "🔍 检查Gradio兼容性..."
+if [ -f "check_gradio_compatibility.py" ]; then
+    python3 check_gradio_compatibility.py > /tmp/gradio_check.log 2>&1
+    if [ $? -eq 0 ]; then
+        echo "✅ Gradio兼容性检查通过"
+    else
+        echo "⚠️  Gradio兼容性检查发现问题"
+        echo "详细信息："
+        cat /tmp/gradio_check.log
+        echo ""
+        echo "💡 您可以选择继续启动，或先解决兼容性问题"
+        read -p "是否继续启动？(y/n): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            echo "已取消启动"
+            exit 1
+        fi
+    fi
+else
+    echo "⚠️  未找到兼容性检查脚本，跳过检查"
+fi
+
 # 设置环境变量
 echo "🔧 设置环境变量..."
 export TOKENIZERS_PARALLELISM=false

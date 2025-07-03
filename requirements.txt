@@ -14,4 +14,5 @@ tensorboard>=2.14.0
 wandb>=0.15.0
 deepspeed>=0.10.0
 gradio>=4.0.0
-bitsandbytes>=0.41.0 
+bitsandbytes>=0.41.0
+packaging>=20.0 
