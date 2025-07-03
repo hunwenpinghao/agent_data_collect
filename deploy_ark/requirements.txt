@@ -1,0 +1,47 @@
+# 火山引擎AICC部署依赖
+torch>=2.0.0
+transformers>=4.35.0
+peft>=0.7.0
+accelerate>=0.24.0
+bitsandbytes>=0.41.0
+
+# Web框架
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+
+# HTTP客户端
+requests>=2.31.0
+aiohttp>=3.8.0
+httpx>=0.25.0
+
+# 火山引擎SDK
+# 注意：Jeddak Secure Model SDK需要手动下载安装
+# 下载地址：https://www.volcengine.com/docs/85010/1546894
+# 安装命令：pip install bytedance.jeddak_secure_channel-VERSION-py3-none-any.whl
+
+# 监控和指标
+prometheus-client>=0.19.0
+psutil>=5.9.0
+
+# 数据处理
+numpy>=1.24.0
+pandas>=2.0.0
+
+# 缓存
+redis>=5.0.0
+
+# 配置管理
+pydantic>=2.0.0
+python-dotenv>=1.0.0
+
+# 日志
+structlog>=23.0.0
+
+# 工具
+tqdm>=4.65.0
+click>=8.1.0
+
+# 可选依赖
+gradio>=4.0.0
+matplotlib>=3.7.0
+seaborn>=0.12.0 

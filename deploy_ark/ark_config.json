@@ -1,0 +1,70 @@
+{
+  "_comment": "火山方舟部署配置文件",
+  "api_key": "${VOLCANO_API_KEY}",
+  "api_secret": "${VOLCANO_API_SECRET}",
+  "endpoint": "https://ark.volcengine.com/api/v1",
+  "region": "cn-beijing",
+  "timeout": 300,
+  
+  "model_config": {
+    "model_name": "qwen-finetune",
+    "version": "1.0.0",
+    "description": "Qwen 2.5模型微调版本，用于小红书文案生成",
+    "framework": "transformers",
+    "python_version": "3.11",
+    "requirements": [
+      "torch>=2.0.0",
+      "transformers>=4.35.0",
+      "peft>=0.7.0",
+      "accelerate>=0.24.0",
+      "fastapi>=0.104.0",
+      "uvicorn>=0.24.0",
+      "aiohttp>=3.8.0",
+      "prometheus-client>=0.19.0"
+    ]
+  },
+  
+  "endpoint_config": {
+    "instance_type": "ml.g4dn.2xlarge",
+    "initial_instance_count": 1,
+    "auto_scaling": true,
+    "min_capacity": 1,
+    "max_capacity": 10,
+    "target_value": 70,
+    "scale_in_cooldown": 300,
+    "scale_out_cooldown": 60,
+    "max_batch_size": 8,
+    "max_sequence_length": 2048,
+    "model_cache_size": "4GB",
+    "workers": 1,
+    "health_check": {
+      "path": "/health",
+      "interval": 30,
+      "timeout": 10,
+      "healthy_threshold": 2,
+      "unhealthy_threshold": 3
+    }
+  },
+  
+  "monitoring": {
+    "enabled": true,
+    "metrics_port": 9090,
+    "log_level": "INFO",
+    "enable_tracing": true,
+    "alerts": {
+      "error_rate_threshold": 0.05,
+      "latency_threshold": 2.0,
+      "throughput_threshold": 10
+    }
+  },
+  
+  "security": {
+    "enable_https": true,
+    "cors_origins": ["*"],
+    "rate_limiting": {
+      "enabled": true,
+      "requests_per_minute": 1000,
+      "burst_size": 100
+    }
+  }
+} 

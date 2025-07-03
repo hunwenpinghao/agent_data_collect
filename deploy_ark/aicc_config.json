@@ -1,0 +1,52 @@
+{
+  "_comment": "火山引擎AICC机密计算平台配置文件",
+  "_description": "基于Jeddak Secure Model SDK的安全模型部署配置",
+  
+  "volc_ak": "${VOLCANO_AK}",
+  "volc_sk": "${VOLCANO_SK}",
+  "app_id": "${VOLCANO_APP_ID}",
+  "bucket_name": "${VOLCANO_BUCKET_NAME}",
+  "region": "cn-beijing",
+  "endpoint": "tos-cn-beijing.volces.com",
+  "aicc_api_endpoint": "https://aicc.volcengineapi.com",
+  "timeout": 300,
+  
+  "_aicc_specs": {
+    "_comment": "AICC规格说明",
+    "基础版": "支持小尺寸模型，如1.5B",
+    "高级版": "支持中尺寸模型，如32B", 
+    "旗舰版": "支持大尺寸模型，如DeepSeek R1-671B"
+  },
+  
+  "_sdk_info": {
+    "_comment": "Jeddak Secure Model SDK信息",
+    "version": "0.1.7.36",
+    "download_url": "https://www.volcengine.com/docs/85010/1546894",
+    "install_cmd": "pip install bytedance.jeddak_secure_channel-VERSION-py3-none-any.whl"
+  },
+  
+  "_deployment_flow": {
+    "_comment": "AICC部署流程",
+    "step1": "模型加密和上传到TOS",
+    "step2": "发布模型到AICC模型广场",
+    "step3": "选择AICC规格部署模型服务",
+    "step4": "测试模型可用性",
+    "step5": "获取推理端点信息"
+  },
+  
+  "_environment_setup": {
+    "_comment": "环境变量设置说明",
+    "required_vars": [
+      "VOLCANO_AK: 火山引擎Access Key",
+      "VOLCANO_SK: 火山引擎Secret Key", 
+      "VOLCANO_APP_ID: 火山账号ID",
+      "VOLCANO_BUCKET_NAME: TOS存储桶名称"
+    ],
+    "setup_commands": [
+      "export VOLCANO_AK='your_access_key'",
+      "export VOLCANO_SK='your_secret_key'",
+      "export VOLCANO_APP_ID='your_account_id'", 
+      "export VOLCANO_BUCKET_NAME='your_bucket_name'"
+    ]
+  }
+} 

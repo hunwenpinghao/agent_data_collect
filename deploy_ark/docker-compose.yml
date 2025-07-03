@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  ark-api:
+    build: .
+    container_name: ark-api-server
+    ports:
+      - "8000:8000"
+      - "9090:9090"
+    environment:
+      - BASE_MODEL_PATH=${BASE_MODEL_PATH:-Qwen/Qwen2.5-0.5B-Instruct}
+      - LORA_MODEL_PATH=${LORA_MODEL_PATH}
+      - QUANTIZATION=${QUANTIZATION:-none}
+      - MAX_BATCH_SIZE=${MAX_BATCH_SIZE:-8}
+      - MAX_WAIT_TIME=${MAX_WAIT_TIME:-0.1}
+      - PORT=8000
+      - HOST=0.0.0.0
+      - WORKERS=1
+      - REDIS_URL=redis://redis:6379
+      - VOLCANO_API_KEY=${VOLCANO_API_KEY}
+      - VOLCANO_API_SECRET=${VOLCANO_API_SECRET}
+    volumes:
+      - ./models:/app/models
+      - ./logs:/app/logs
+      - ./cache:/app/cache
+    depends_on:
+      - redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  redis:
+    image: redis:7-alpine
+    container_name: ark-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  redis_data:
+
+networks:
+  default:
+    driver: bridge
