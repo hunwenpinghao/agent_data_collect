@@ -1,0 +1,44 @@
+# 生产级Dockerfile for 火山引擎部署
+FROM pytorch/pytorch:2.1.0-cuda11.8-cudnn8-devel
+
+WORKDIR /app
+
+# 安装系统依赖
+RUN apt-get update && apt-get install -y \
+    git wget curl nginx supervisor \
+    && rm -rf /var/lib/apt/lists/*
+
+# 复制requirements并安装Python依赖
+COPY requirements_stable.txt .
+RUN pip install --no-cache-dir -r requirements_stable.txt
+
+# 安装生产级推理服务依赖
+RUN pip install --no-cache-dir \
+    fastapi uvicorn gunicorn \
+    prometheus-client \
+    redis celery
+
+# 复制项目文件
+COPY . .
+
+# 创建必要目录
+RUN mkdir -p logs cache models
+
+# 复制生产配置
+COPY deploy/nginx.conf /etc/nginx/nginx.conf
+COPY deploy/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# 设置环境变量
+ENV PYTHONPATH=/app
+ENV TOKENIZERS_PARALLELISM=false
+ENV TRANSFORMERS_NO_ADVISORY_WARNINGS=true
+ENV HF_HOME=/app/cache/huggingface
+ENV MODEL_CACHE_DIR=/app/cache/models
+
+# 健康检查
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+EXPOSE 8000
+
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"] 

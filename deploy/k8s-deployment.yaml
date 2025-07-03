@@ -1,0 +1,102 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: qwen-model-api
+  labels:
+    app: qwen-model-api
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: qwen-model-api
+  template:
+    metadata:
+      labels:
+        app: qwen-model-api
+    spec:
+      containers:
+      - name: qwen-api
+        image: your-registry/qwen-model-api:latest
+        ports:
+        - containerPort: 8000
+        env:
+        - name: BASE_MODEL_PATH
+          value: "Qwen/Qwen2.5-0.5B-Instruct"
+        - name: LORA_MODEL_PATH
+          value: "/app/models/your-lora-model"
+        - name: WORKERS
+          value: "4"
+        - name: REDIS_URL
+          value: "redis://redis-service:6379"
+        resources:
+          requests:
+            memory: "8Gi"
+            cpu: "2"
+            nvidia.com/gpu: 1
+          limits:
+            memory: "16Gi"
+            cpu: "4"
+            nvidia.com/gpu: 1
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        volumeMounts:
+        - name: model-storage
+          mountPath: /app/models
+        - name: cache-storage
+          mountPath: /app/cache
+      volumes:
+      - name: model-storage
+        persistentVolumeClaim:
+          claimName: model-pvc
+      - name: cache-storage
+        emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: qwen-api-service
+spec:
+  selector:
+    app: qwen-model-api
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 8000
+  type: LoadBalancer
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: qwen-api-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: qwen-model-api
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80 

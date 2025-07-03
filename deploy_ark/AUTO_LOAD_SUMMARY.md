@@ -23,7 +23,7 @@
 
 ```csv
 用户名,登录密码,登录地址,所属主账号ID,Access Key ID,Secret Access Key
-wphu,Admin12345@,https://console.volcengine.com/auth/login/user/2108490487,2108490487,AKLTNDE1YjQwYjI5MmRlNDU0ZGJjOTMzMDI0MDI1ZWQ3MTQ,TWpJNVpEWTVOV0l5WVRJMk5EUm1ZVGs1TkdRM056UTRPRFV4WlRka1lUWQ==
+示例用户,示例密码,https://console.volcengine.com/auth/login/user/1234567890,1234567890,AKLT*********************,****************
 ```
 
 **重要字段**：

@@ -290,6 +290,8 @@ output_qwen_*/
 | [README_LORA.md](README_LORA.md) | LoRA微调专项 |
 | [README_ISSUE.md](README_ISSUE.md) | 常见问题解决 |
 | [MEMORY_OPTIMIZATION_GUIDE.md](MEMORY_OPTIMIZATION_GUIDE.md) | 内存优化完整指南 |
+| [ACCELERATE_VS_DEEPSPEED.md](ACCELERATE_VS_DEEPSPEED.md) | Accelerate vs DeepSpeed详细对比 |
+| [TRAINING_COMPARISON_SUMMARY.md](TRAINING_COMPARISON_SUMMARY.md) | 训练方式快速对比 |
 | [EVAL_README.md](EVAL_README.md) | 模型评估指南 |
 
 ## 🔨 故障排除
@@ -370,6 +372,9 @@ tail -f output_qwen/logs/train.log
 
 ### Q: 如何选择合适的配置？
 **A:** 根据GPU内存：>12GB用`deepspeed`，6-12GB用`stage2_offload`，<6GB用`stage3`
+
+### Q: Accelerate和DeepSpeed有什么区别？
+**A:** Accelerate简单稳定适合新手，DeepSpeed内存优化强大适合生产环境
 
 ### Q: 训练结果在哪里？
 **A:** 在`output_qwen_*/`目录下，LoRA适配器是`adapter_model.bin`
