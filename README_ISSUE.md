@@ -109,6 +109,8 @@ pip install nvidia-tensorrt
 export TF_ENABLE_ONEDNN_OPTS=0
 export TF_CPP_MIN_LOG_LEVEL=2
 export DEEPSPEED_LOG_LEVEL=WARNING
+export ACCELERATE_USE_DEEPSPEED=false
+export TRANSFORMERS_NO_DEEPSPEED=true
 export PYTHONWARNINGS="ignore"
 ```
 
@@ -121,7 +123,11 @@ import logging
 # 禁用TensorFlow警告
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+
+# 禁用DeepSpeed自动检测和初始化
 os.environ['DEEPSPEED_LOG_LEVEL'] = 'WARNING'
+os.environ['ACCELERATE_USE_DEEPSPEED'] = 'false'
+os.environ['TRANSFORMERS_NO_DEEPSPEED'] = 'true'
 
 # 禁用Python警告
 warnings.filterwarnings('ignore')
@@ -129,36 +135,83 @@ warnings.filterwarnings('ignore')
 # 抑制第三方库日志
 logging.getLogger('deepspeed').setLevel(logging.WARNING)
 logging.getLogger('transformers.modeling_utils').setLevel(logging.WARNING)
+logging.getLogger('accelerate.utils.other').setLevel(logging.ERROR)  # 抑制内核版本警告
 ```
 
-#### 5. DeepSpeed 冗余日志
-**信息**: 
+#### 5. DeepSpeed 重复初始化问题
+**问题现象**: 
 ```
 [INFO] [real_accelerator.py:254:get_accelerator] Setting ds_accelerator to cuda (auto detect)
 [INFO] [logging.py:107:log_dist] [Rank -1] [TorchCheckpointEngine] Initialized with serialization = False
 ```
 
-这些是DeepSpeed的初始化信息，会重复出现影响日志可读性。
+这些DeepSpeed初始化信息会重复出现，影响日志可读性。
 
-**解决方案**: 设置DeepSpeed日志级别
+**根本原因**: transformers库会自动检测系统中是否安装了DeepSpeed，即使没有明确配置使用它，也会触发初始化。
+
+**彻底解决方案**: 
+1. **移除DeepSpeed依赖**（推荐）:
 ```bash
-export DEEPSPEED_LOG_LEVEL=WARNING
+pip uninstall deepspeed
 ```
 
-或在Python代码中设置：
+2. **或者禁用DeepSpeed自动检测**:
+```python
+# 在代码开头添加
+import os
+os.environ['ACCELERATE_USE_DEEPSPEED'] = 'false'
+os.environ['TRANSFORMERS_NO_DEEPSPEED'] = 'true'
+os.environ['DEEPSPEED_LOG_LEVEL'] = 'WARNING'
+```
+
+3. **临时方案** - 仅抑制日志:
 ```python
 import logging
 logging.getLogger('deepspeed').setLevel(logging.WARNING)
+```
+
+**注意**: 如果确实需要使用DeepSpeed进行大规模训练，请保留依赖并通过配置文件明确启用。
+
+#### 6. 系统内核版本警告
+**警告信息**: 
+```
+WARNING:accelerate.utils.other:Detected kernel version 4.19.91, which is below the recommended minimum of 5.5.0; this can cause the process to hang. It is recommended to upgrade the kernel to the minimum version or higher.
+```
+
+**原因**: Linux内核版本过低，可能导致训练过程挂起。
+
+**解决方案**: 
+1. **推荐方案**: 升级系统内核到5.5.0或更高版本
+2. **临时方案**: 如果无法升级内核，可以忽略此警告，但需要注意：
+   - 训练过程可能会偶尔挂起
+   - 建议减少并发进程数量
+   - 设置合理的超时时间
+
+#### 7. PEFT模型标签名称警告
+**警告信息**: 
+```
+No label_names provided for model class `PeftModelForCausalLM`. Since `PeftModel` hides base models input arguments, if label_names is not given, label_names can't be set automatically within `Trainer`. Note that empty label_names list will be used instead.
+```
+
+**原因**: 使用LoRA/QLoRA时，PEFT模型无法自动设置标签名称。
+
+**解决方案**: 这是正常的信息性警告，不影响训练效果。如果要抑制此警告，可以在训练参数中明确设置：
+```python
+# 在训练配置中添加
+training_args.label_names = ["labels"]
 ```
 
 ### 注意事项
 - 这些警告通常不影响训练效果
 - 禁用警告可能会隐藏一些有用的调试信息
 - 建议在调试时保留警告，在生产环境中禁用
+- 内核版本警告比较重要，建议关注系统稳定性
 
 ---
 
 ## 更新日志
 
 - **2024-12-19**: 添加 transformers==4.51.3 兼容性问题解决方案
-- **2024-12-19**: 添加训练过程中警告信息的解决方案 
+- **2024-12-19**: 添加训练过程中警告信息的解决方案
+- **2024-12-19**: 添加系统内核版本警告和PEFT模型标签名称警告的解决方案
+- **2024-12-19**: 修复DeepSpeed重复初始化问题，移除非必要依赖 

@@ -21,8 +21,10 @@ os.environ.setdefault('TRANSFORMERS_NO_ADVISORY_WARNINGS', 'true')
 os.environ.setdefault('TF_ENABLE_ONEDNN_OPTS', '0')
 os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '2')
 
-# 禁用DeepSpeed冗余日志
+# 禁用DeepSpeed自动检测和初始化
 os.environ.setdefault('DEEPSPEED_LOG_LEVEL', 'WARNING')
+os.environ.setdefault('ACCELERATE_USE_DEEPSPEED', 'false')
+os.environ.setdefault('TRANSFORMERS_NO_DEEPSPEED', 'true')
 
 # 禁用Python警告
 import warnings
@@ -65,6 +67,7 @@ logging.getLogger('deepspeed').setLevel(logging.WARNING)
 logging.getLogger('transformers.modeling_utils').setLevel(logging.WARNING)
 logging.getLogger('transformers.configuration_utils').setLevel(logging.WARNING)
 logging.getLogger('transformers.tokenization_utils_base').setLevel(logging.WARNING)
+logging.getLogger('accelerate.utils.other').setLevel(logging.ERROR)  # 抑制内核版本警告
 
 @dataclass
 class ModelArguments:
@@ -146,6 +149,7 @@ class CustomTrainingArguments(TrainingArguments):
     dataloader_num_workers: int = field(default=4)
     remove_unused_columns: bool = field(default=False)
     fp16: bool = field(default=True)
+    label_names: Optional[List[str]] = field(default_factory=lambda: ["labels"])
 
 class SFTDataset(Dataset):
     """SFT数据集类"""
@@ -344,12 +348,18 @@ def main():
     # 创建量化配置
     quantization_config = create_quantization_config(model_args)
     
+    # 在加载模型前进一步确保禁用DeepSpeed
+    import accelerate
+    if hasattr(accelerate, 'utils') and hasattr(accelerate.utils, 'environment'):
+        accelerate.utils.environment.DEEPSPEED_ENABLED = False
+    
     # 加载模型
     logger.info("加载模型...")
     model_kwargs = {
         "trust_remote_code": True,
         "cache_dir": model_args.cache_dir,
         "torch_dtype": torch.float16,
+        "device_map": "auto",  # 明确设置device_map避免DeepSpeed自动检测
     }
     
     if quantization_config is not None:
@@ -405,6 +415,10 @@ def main():
         label_pad_token_id=-100,
         pad_to_multiple_of=8
     )
+    
+    # 确保禁用DeepSpeed
+    if hasattr(training_args, 'deepspeed'):
+        training_args.deepspeed = None
     
     # 创建训练器
     trainer = Trainer(
