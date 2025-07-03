@@ -146,7 +146,7 @@ class ModelInference:
         
         Args:
             model_path: 基础模型路径
-            model_type: 模型类型 (lora, full_ft, qlora)
+            model_type: 模型类型 (base, lora, full_ft, qlora)
             lora_path: LoRA适配器路径（仅当model_type为lora或qlora时需要）
             quantization: 量化类型 (none, 4bit, 8bit)
             
@@ -200,8 +200,12 @@ class ModelInference:
             if model_type == "full_ft":
                 # 完整微调模型直接加载
                 self.model = load_model_with_patch(model_path, **model_kwargs)
+            elif model_type == "base":
+                # 仅加载基础模型
+                self.model = load_model_with_patch(model_path, **model_kwargs)
+                logger.info("仅加载基础模型，不加载任何适配器")
             else:
-                # LoRA或QLoRA需要先加载基础模型
+                # LoRA或QLoRA需要先加载基础模型，然后加载适配器
                 self.model = load_model_with_patch(model_path, **model_kwargs)
                 
                 # 加载LoRA适配器
@@ -232,16 +236,21 @@ class ModelInference:
     def generate_response(self, prompt: str, max_length: int = 512, temperature: float = 0.7,
                          top_p: float = 0.9, top_k: int = 50, repetition_penalty: float = 1.1, debug: bool = False, stream: bool = False):
         """
-        生成回复 - 暂时禁用流式生成，总是返回字符串
+        生成回复，支持流式或一次性生成
         
         Args:
-            stream: 是否使用流式生成（暂时禁用）
+            stream: 是否使用流式生成
             
         Returns:
-            总是返回字符串（不会返回生成器）
+            如果stream=True，返回生成器；否则返回字符串
         """
         if self.model is None or self.tokenizer is None:
-            return "❌ 请先加载模型！"
+            if stream:
+                def error_generator():
+                    yield "❌ 请先加载模型！"
+                return error_generator()
+            else:
+                return "❌ 请先加载模型！"
         
         try:
             # 构建对话格式
@@ -264,20 +273,20 @@ class ModelInference:
                 "no_repeat_ngram_size": 3,
             }
             
-            # 流式生成已被禁用，始终使用普通模式
             if stream:
-                logger.warning("流式生成已禁用，使用普通模式")
-            
-            # 使用普通模式生成
-            with torch.no_grad():
-                outputs = self.model.generate(
-                    inputs.input_ids,
-                    attention_mask=inputs.attention_mask,
-                    **generate_kwargs
-                )
-            
-            # 解码输出
-            generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+                # 流式生成
+                return self._generate_stream_fixed(inputs, generate_kwargs, conversation, prompt, input_length, debug)
+            else:
+                # 普通模式生成
+                with torch.no_grad():
+                    outputs = self.model.generate(
+                        inputs.input_ids,
+                        attention_mask=inputs.attention_mask,
+                        **generate_kwargs
+                    )
+                
+                # 解码输出
+                generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
             
             # 调试输出
             if debug:
@@ -326,7 +335,88 @@ class ModelInference:
         except Exception as e:
             error_msg = f"❌ 生成失败: {str(e)}"
             logger.error(error_msg)
-            return error_msg
+            if stream:
+                def error_generator():
+                    yield error_msg
+                return error_generator()
+            else:
+                return error_msg
+    
+    def _generate_stream_fixed(self, inputs, generate_kwargs, conversation, prompt, input_length, debug):
+        """
+        修复版流式生成，确保与Gradio兼容
+        """
+        try:
+            max_new_tokens = min(generate_kwargs.get("max_length", 512) - input_length, 1024)
+            
+            # 使用更简单的方式实现流式生成
+            def stream_generator():
+                current_text = ""
+                accumulated_response = ""
+                
+                # 分批生成，每次生成多个token
+                batch_size = 8  # 每次生成8个token
+                
+                for step in range(0, max_new_tokens, batch_size):
+                    try:
+                        # 生成一小批token
+                        current_batch_size = min(batch_size, max_new_tokens - step)
+                        
+                        with torch.no_grad():
+                            outputs = self.model.generate(
+                                inputs.input_ids,
+                                attention_mask=inputs.attention_mask,
+                                max_new_tokens=current_batch_size,
+                                min_new_tokens=1,
+                                temperature=generate_kwargs["temperature"],
+                                top_p=generate_kwargs["top_p"],
+                                top_k=generate_kwargs["top_k"],
+                                repetition_penalty=generate_kwargs["repetition_penalty"],
+                                do_sample=generate_kwargs["do_sample"],
+                                pad_token_id=generate_kwargs["pad_token_id"],
+                                eos_token_id=generate_kwargs["eos_token_id"],
+                                no_repeat_ngram_size=generate_kwargs.get("no_repeat_ngram_size", 3),
+                            )
+                        
+                        # 解码新生成的文本
+                        generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+                        
+                        # 提取回复部分
+                        response = self._extract_response_part(generated_text, conversation, prompt)
+                        response = self._clean_response(response, conversation, prompt)
+                        
+                        # 如果有新内容，就yield
+                        if response and response != accumulated_response:
+                            accumulated_response = response
+                            yield response
+                        
+                        # 检查是否应该停止
+                        if outputs[0, -1].item() == self.tokenizer.eos_token_id:
+                            break
+                        
+                        # 更新输入为当前输出，准备下一轮生成
+                        inputs.input_ids = outputs
+                        inputs.attention_mask = torch.ones_like(outputs)
+                        
+                        # 小延迟
+                        time.sleep(0.1)
+                        
+                    except Exception as e:
+                        logger.error(f"流式生成步骤错误: {e}")
+                        yield f"❌ 生成过程中出错: {str(e)}"
+                        break
+                
+                # 确保最后有内容
+                if not accumulated_response.strip():
+                    yield "抱歉，没有生成有效内容。"
+            
+            return stream_generator()
+            
+        except Exception as e:
+            logger.error(f"流式生成初始化失败: {e}")
+            def error_generator():
+                yield f"❌ 流式生成失败: {str(e)}"
+            return error_generator()
     
     def _generate_stream(self, inputs, generate_kwargs, conversation, prompt, input_length, debug):
         """
@@ -598,25 +688,25 @@ def create_gradio_interface():
                 
                 # 模型类型选择
                 model_type = gr.Radio(
-                    choices=["lora", "full_ft", "qlora"],
-                    value="lora",
+                    choices=["base", "lora", "qlora", "full_ft"],
+                    value="base",
                     label="模型类型",
-                    info="选择微调模型类型"
+                    info="base: 基础模型 | lora: LoRA适配器 | qlora: QLoRA适配器 | full_ft: 完整微调模型"
                 )
                 
                 # 基础模型路径
                 base_model_path = gr.Textbox(
-                    value="Qwen/Qwen2.5-0.5B-Instruct",
+                    value="models/Qwen/Qwen2.5-0.5B-Instruct",
                     label="基础模型路径",
                     info="HuggingFace模型名称或本地路径"
                 )
                 
                 # LoRA适配器路径
                 lora_path = gr.Textbox(
-                    value="./output_qwen",
+                    value="./output_qwen_lora",
                     label="LoRA适配器路径",
                     info="LoRA/QLoRA适配器的保存路径",
-                    visible=True
+                    visible=False  # 默认为base模式，不显示
                 )
                 
                 # 量化选项
@@ -724,9 +814,9 @@ def create_gradio_interface():
                     
                     stream_mode = gr.Checkbox(
                         label="⚡ 流式生成",
-                        value=False,  # 默认关闭，避免兼容性问题
-                        info="暂时禁用，使用普通生成模式",
-                        interactive=False  # 暂时禁用交互
+                        value=False,  # 默认关闭，可以手动开启
+                        info="实时显示生成过程（重新启用）",
+                        interactive=True  # 重新启用交互
                     )
         
         # 控制LoRA路径显示
@@ -773,34 +863,53 @@ def create_gradio_interface():
             history.append([message, ""])
             
             try:
-                # 流式生成已被禁用，总是使用普通模式
                 if stream:
-                    logger.warning("流式生成已被禁用，使用普通模式")
-                
-                # 使用普通模式生成
-                # 一次性生成 - 先显示正在生成的状态
-                history[-1][1] = "🤔 正在思考中..."
-                yield history, ""
-                
-                response = model_inference.generate_response(
-                    message, max_len, temp, top_p_val, top_k_val, rep_penalty, debug, stream=False
-                )
-                
-                # 确保响应是字符串
-                if not isinstance(response, str):
-                    response = str(response)
-                
-                # 在调试模式下，添加额外信息
-                if debug and not response.startswith("❌"):
-                    response += f"\n\n[调试信息] 模型类型: {model_inference.model_type or '未加载'}"
-                    if model_inference.loaded_model_path:
-                        response += f"\n[调试信息] 基础模型: {model_inference.loaded_model_path}"
-                    if model_inference.loaded_lora_path:
-                        response += f"\n[调试信息] LoRA路径: {model_inference.loaded_lora_path}"
-                
-                # 更新对话历史
-                history[-1][1] = response
-                yield history, ""
+                    # 流式生成
+                    response_generator = model_inference.generate_response(
+                        message, max_len, temp, top_p_val, top_k_val, rep_penalty, debug, stream=True
+                    )
+                    
+                    # 处理生成器
+                    for partial_response in response_generator:
+                        # 在调试模式下，添加额外信息
+                        display_response = partial_response
+                        if debug and not partial_response.startswith("❌"):
+                            debug_info = f"\n\n[调试信息] 模型类型: {model_inference.model_type or '未加载'}"
+                            if model_inference.loaded_model_path:
+                                debug_info += f"\n[调试信息] 基础模型: {model_inference.loaded_model_path}"
+                            if model_inference.loaded_lora_path:
+                                debug_info += f"\n[调试信息] LoRA路径: {model_inference.loaded_lora_path}"
+                            display_response = partial_response + debug_info
+                        
+                        # 更新对话历史中的最后一条消息
+                        history[-1][1] = display_response
+                        yield history, ""
+                        
+                else:
+                    # 普通模式生成
+                    # 一次性生成 - 先显示正在生成的状态
+                    history[-1][1] = "🤔 正在思考中..."
+                    yield history, ""
+                    
+                    response = model_inference.generate_response(
+                        message, max_len, temp, top_p_val, top_k_val, rep_penalty, debug, stream=False
+                    )
+                    
+                    # 确保响应是字符串
+                    if not isinstance(response, str):
+                        response = str(response)
+                    
+                    # 在调试模式下，添加额外信息
+                    if debug and not response.startswith("❌"):
+                        response += f"\n\n[调试信息] 模型类型: {model_inference.model_type or '未加载'}"
+                        if model_inference.loaded_model_path:
+                            response += f"\n[调试信息] 基础模型: {model_inference.loaded_model_path}"
+                        if model_inference.loaded_lora_path:
+                            response += f"\n[调试信息] LoRA路径: {model_inference.loaded_lora_path}"
+                    
+                    # 更新对话历史
+                    history[-1][1] = response
+                    yield history, ""
                     
             except Exception as e:
                 error_msg = f"❌ 生成失败: {str(e)}"
@@ -847,7 +956,7 @@ def create_gradio_interface():
         gr.Markdown("""
         ---
         ### 📖 使用说明
-        1. **选择模型类型**：LoRA、完整微调(Full FT)或QLoRA
+        1. **选择模型类型**：base(基础模型)、LoRA、QLoRA或完整微调(Full FT)
         2. **配置模型路径**：设置基础模型和LoRA适配器路径
         3. **选择量化方式**：可选择4bit或8bit量化以节省显存
         4. **加载模型**：点击"加载模型"按钮
@@ -860,11 +969,11 @@ def create_gradio_interface():
         - 温度越高生成越随机，越低越确定
         - Top-p和Top-k控制生成的多样性
         
-        ### ⚡ 流式生成（暂时禁用）
-        - **当前状态**：流式生成功能暂时禁用，使用普通生成模式
-        - **生成过程**：会显示"正在思考中..."然后显示完整回复
-        - **稳定性**：普通模式更稳定，避免兼容性问题
-        - **后续优化**：将在后续版本中重新启用流式生成
+        ### ⚡ 流式生成（已重新启用）
+        - **实时显示**：开启流式生成可以实时看到模型的生成过程
+        - **更好体验**：长回复时不需要等待，可以边生成边阅读
+        - **批量生成**：使用优化的分批生成实现，平衡速度和稳定性
+        - **可选功能**：可以关闭流式生成，使用传统的一次性生成
         
         ### 🔧 问题排查
         - **如果回复包含多余内容**：开启调试模式查看详细信息
