@@ -250,8 +250,22 @@ auto_install_jeddak_sdk() {
     local sdk_url="https://lf3-static.bytednsdoc.com/obj/eden-cn/jzeh7vhobenuhog/bytedance_jeddak_secure_channel-0.1.7.36-py3-none-any.whl"
     local sdk_file="bytedance_jeddak_secure_channel-0.1.7.36-py3-none-any.whl"
     
-    print_info "开始自动下载Jeddak SDK..."
+    print_info "🚀 开始自动下载安装Jeddak SDK..."
     print_info "下载地址: $sdk_url"
+    
+    # 步骤1: 检查并安装依赖
+    print_info "📋 检查依赖环境..."
+    local dependencies=("cryptography>=38.0.0" "requests>=2.22" "typing_extensions>=4.12")
+    
+    for dep in "${dependencies[@]}"; do
+        print_info "检查依赖: $dep"
+        if ! pip install "$dep" >/dev/null 2>&1; then
+            print_warn "依赖安装可能有问题: $dep"
+        fi
+    done
+    
+    # 步骤2: 下载SDK
+    print_info "📦 正在下载SDK文件..."
     
     # 检查是否有下载工具
     if command -v curl >/dev/null 2>&1; then
@@ -272,6 +286,7 @@ auto_install_jeddak_sdk() {
         fi
     else
         print_warn "❌ 系统中没有找到curl或wget，无法自动下载"
+        print_warn "请安装curl: brew install curl (macOS) 或 apt-get install curl (Ubuntu)"
         return 1
     fi
     
@@ -290,25 +305,46 @@ auto_install_jeddak_sdk() {
     
     print_info "SDK文件大小: $file_size 字节"
     
-    # 安装SDK
-    print_info "开始安装Jeddak SDK..."
-    if pip install "$sdk_file"; then
-        print_info "✅ SDK安装成功"
-        
-        # 验证安装
-        if python3 -c "from bytedance.jeddak_secure_model.model_encryption import JeddakModelEncrypter" 2>/dev/null; then
-            print_info "✅ SDK安装验证成功"
-            # 清理下载文件
-            rm -f "$sdk_file"
-            return 0
-        else
-            print_warn "❌ SDK安装验证失败"
-            rm -f "$sdk_file"
-            return 1
+    # 步骤3: 安装SDK（带重试机制）
+    print_info "🔧 开始安装SDK..."
+    local install_success=false
+    
+    for attempt in 1 2; do
+        if [[ $attempt -gt 1 ]]; then
+            print_info "第${attempt}次安装尝试..."
+            # 尝试更新pip
+            pip install --upgrade pip >/dev/null 2>&1
         fi
-    else
+        
+        if pip install --force-reinstall "$sdk_file"; then
+            install_success=true
+            break
+        else
+            print_warn "第${attempt}次安装失败"
+        fi
+    done
+    
+    # 清理下载文件
+    rm -f "$sdk_file"
+    
+    if [[ "$install_success" == "false" ]]; then
         print_warn "❌ SDK安装失败"
-        rm -f "$sdk_file"
+        print_info "💡 可能的解决方案:"
+        print_info "1. 手动安装: pip install --upgrade pip"
+        print_info "2. 检查网络连接"
+        print_info "3. 使用虚拟环境"
+        return 1
+    fi
+    
+    print_info "✅ SDK安装成功"
+    
+    # 步骤4: 验证安装
+    if python3 -c "from bytedance.jeddak_secure_model.model_encryption import JeddakModelEncrypter" 2>/dev/null; then
+        print_info "✅ SDK安装验证成功"
+        return 0
+    else
+        print_warn "❌ SDK安装验证失败"
+        print_info "💡 建议重启终端后重试"
         return 1
     fi
 }

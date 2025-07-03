@@ -25,12 +25,27 @@ def auto_install_jeddak_sdk() -> bool:
     sdk_url = "https://lf3-static.bytednsdoc.com/obj/eden-cn/jzeh7vhobenuhog/bytedance_jeddak_secure_channel-0.1.7.36-py3-none-any.whl"
     sdk_file = "bytedance_jeddak_secure_channel-0.1.7.36-py3-none-any.whl"
     
-    logger.info("🚀 开始自动下载Jeddak SDK...")
+    logger.info("🚀 开始自动下载安装Jeddak SDK...")
     logger.info(f"下载地址: {sdk_url}")
     
     try:
-        # 使用curl下载
-        logger.info("正在下载SDK文件...")
+        # 步骤1: 检查并安装依赖
+        logger.info("📋 检查依赖环境...")
+        dependencies = [
+            "cryptography>=38.0.0",
+            "requests>=2.22",
+            "typing_extensions>=4.12"
+        ]
+        
+        for dep in dependencies:
+            logger.info(f"检查依赖: {dep}")
+            result = subprocess.run([sys.executable, '-m', 'pip', 'install', dep], 
+                                  capture_output=True, text=True)
+            if result.returncode != 0:
+                logger.warning(f"依赖安装可能有问题: {dep}")
+        
+        # 步骤2: 下载SDK
+        logger.info("📦 正在下载SDK文件...")
         result = subprocess.run(['curl', '-L', '-o', sdk_file, sdk_url], 
                               capture_output=True, text=True, timeout=300)
         
@@ -47,27 +62,45 @@ def auto_install_jeddak_sdk() -> bool:
         
         logger.info(f"✅ SDK下载成功，文件大小: {os.path.getsize(sdk_file)} 字节")
         
-        # 安装SDK
-        logger.info("📦 开始安装SDK...")
-        result = subprocess.run([sys.executable, '-m', 'pip', 'install', sdk_file], 
-                              capture_output=True, text=True)
+        # 步骤3: 安装SDK（带重试机制）
+        logger.info("🔧 开始安装SDK...")
+        for attempt in range(2):
+            if attempt > 0:
+                logger.info(f"第{attempt + 1}次安装尝试...")
+            
+            result = subprocess.run([sys.executable, '-m', 'pip', 'install', '--force-reinstall', sdk_file], 
+                                  capture_output=True, text=True)
+            
+            if result.returncode == 0:
+                break
+            else:
+                logger.warning(f"第{attempt + 1}次安装失败: {result.stderr}")
+                if attempt == 0:
+                    # 尝试更新pip
+                    subprocess.run([sys.executable, '-m', 'pip', 'install', '--upgrade', 'pip'], 
+                                 capture_output=True, text=True)
         
         # 清理下载文件
-        os.remove(sdk_file)
+        if os.path.exists(sdk_file):
+            os.remove(sdk_file)
         
         if result.returncode != 0:
             logger.error(f"安装失败: {result.stderr}")
+            logger.error("💡 可能的解决方案:")
+            logger.error("1. 手动安装: pip install --upgrade pip")
+            logger.error("2. 检查网络连接")
+            logger.error("3. 使用虚拟环境")
             return False
         
         logger.info("✅ SDK安装成功")
         
-        # 验证安装
+        # 步骤4: 验证安装
         try:
             from bytedance.jeddak_secure_model.model_encryption import JeddakModelEncrypter
             logger.info("✅ SDK验证成功")
             return True
-        except ImportError:
-            logger.error("❌ SDK验证失败")
+        except ImportError as e:
+            logger.error(f"❌ SDK验证失败: {e}")
             return False
             
     except subprocess.TimeoutExpired:
@@ -75,6 +108,7 @@ def auto_install_jeddak_sdk() -> bool:
         return False
     except FileNotFoundError:
         logger.error("❌ 系统中没有找到curl命令")
+        logger.error("请安装curl: brew install curl (macOS) 或 apt-get install curl (Ubuntu)")
         return False
     except Exception as e:
         logger.error(f"❌ 安装过程出错: {e}")
