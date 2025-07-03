@@ -21,10 +21,8 @@ os.environ.setdefault('TRANSFORMERS_NO_ADVISORY_WARNINGS', 'true')
 os.environ.setdefault('TF_ENABLE_ONEDNN_OPTS', '0')
 os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '2')
 
-# 禁用DeepSpeed自动检测和初始化
+# DeepSpeed相关环境变量将在main函数中根据配置动态设置
 os.environ.setdefault('DEEPSPEED_LOG_LEVEL', 'WARNING')
-os.environ.setdefault('ACCELERATE_USE_DEEPSPEED', 'false')
-os.environ.setdefault('TRANSFORMERS_NO_DEEPSPEED', 'true')
 
 # 禁用Python警告
 import warnings
@@ -108,6 +106,14 @@ class ModelArguments:
         default=4,
         metadata={"help": "量化位数，支持4或8位"}
     )
+    use_deepspeed: bool = field(
+        default=False,
+        metadata={"help": "是否使用DeepSpeed进行训练"}
+    )
+    deepspeed_stage: int = field(
+        default=2,
+        metadata={"help": "DeepSpeed ZeRO阶段，支持1,2,3"}
+    )
 
 @dataclass
 class DataArguments:
@@ -150,6 +156,7 @@ class CustomTrainingArguments(TrainingArguments):
     remove_unused_columns: bool = field(default=False)
     fp16: bool = field(default=True)
     label_names: Optional[List[str]] = field(default_factory=lambda: ["labels"])
+    deepspeed: Optional[str] = field(default=None)
 
 class SFTDataset(Dataset):
     """SFT数据集类"""
@@ -306,6 +313,73 @@ def find_all_linear_names(model):
         lora_module_names.remove('lm_head')
     return list(lora_module_names)
 
+def create_deepspeed_config(model_args: ModelArguments, training_args: CustomTrainingArguments) -> Dict[str, Any]:
+    """创建DeepSpeed配置"""
+    if not model_args.use_deepspeed:
+        return None
+    
+    # 基础配置
+    config = {
+        "bf16": {
+            "enabled": not training_args.fp16
+        },
+        "fp16": {
+            "enabled": training_args.fp16,
+            "loss_scale": 0,
+            "loss_scale_window": 1000,
+            "hysteresis": 2,
+            "min_loss_scale": 1
+        },
+        "optimizer": {
+            "type": "AdamW",
+            "params": {
+                "lr": training_args.learning_rate,
+                "betas": [0.9, 0.999],
+                "eps": 1e-8,
+                "weight_decay": training_args.weight_decay if hasattr(training_args, 'weight_decay') else 0.0
+            }
+        },
+        "scheduler": {
+            "type": "WarmupLR",
+            "params": {
+                "warmup_min_lr": 0,
+                "warmup_max_lr": training_args.learning_rate,
+                "warmup_num_steps": training_args.warmup_steps
+            }
+        },
+        "zero_optimization": {
+            "stage": model_args.deepspeed_stage,
+            "offload_optimizer": {
+                "device": "cpu" if model_args.deepspeed_stage == 3 else "none"
+            },
+            "offload_param": {
+                "device": "cpu" if model_args.deepspeed_stage == 3 else "none"
+            },
+            "overlap_comm": True,
+            "contiguous_gradients": True,
+            "sub_group_size": 1e9,
+            "reduce_bucket_size": "auto",
+            "stage3_prefetch_bucket_size": "auto",
+            "stage3_param_persistence_threshold": "auto",
+            "stage3_max_live_parameters": 1e9,
+            "stage3_max_reuse_distance": 1e9,
+            "gather_16bit_weights_on_model_save": True
+        },
+        "gradient_accumulation_steps": training_args.gradient_accumulation_steps,
+        "gradient_clipping": 1.0,
+        "steps_per_print": training_args.logging_steps,
+        "train_batch_size": training_args.per_device_train_batch_size * training_args.gradient_accumulation_steps * torch.cuda.device_count(),
+        "train_micro_batch_size_per_gpu": training_args.per_device_train_batch_size,
+        "wall_clock_breakdown": False
+    }
+    
+    # 如果使用LoRA，调整配置
+    if model_args.use_lora or model_args.use_qlora:
+        config["zero_optimization"]["stage"] = min(model_args.deepspeed_stage, 2)  # LoRA不支持stage 3
+        
+    logger.info(f"DeepSpeed配置: ZeRO Stage {config['zero_optimization']['stage']}")
+    return config
+
 def main():
     # 解析参数
     import sys
@@ -323,12 +397,32 @@ def main():
         model_args, data_args, training_args = parser.parse_dict(filtered_config)
     else:
         model_args, data_args, training_args = parser.parse_args_into_dataclasses()
-    
+
+    # 根据配置设置DeepSpeed相关环境变量
+    if model_args.use_deepspeed:
+        logger.info("启用DeepSpeed训练")
+        os.environ.pop('ACCELERATE_USE_DEEPSPEED', None)  # 移除可能的禁用设置
+        os.environ.pop('TRANSFORMERS_NO_DEEPSPEED', None)
+    else:
+        logger.info("使用标准训练（不使用DeepSpeed）")
+        os.environ.setdefault('ACCELERATE_USE_DEEPSPEED', 'false')
+        os.environ.setdefault('TRANSFORMERS_NO_DEEPSPEED', 'true')
+
     # 设置随机种子
     set_seed(training_args.seed if hasattr(training_args, 'seed') else 42)
     
     # 创建输出目录
     os.makedirs(training_args.output_dir, exist_ok=True)
+    
+    # 创建DeepSpeed配置
+    deepspeed_config = create_deepspeed_config(model_args, training_args)
+    if deepspeed_config:
+        # 保存DeepSpeed配置文件
+        deepspeed_config_path = os.path.join(training_args.output_dir, "deepspeed_config.json")
+        with open(deepspeed_config_path, 'w', encoding='utf-8') as f:
+            json.dump(deepspeed_config, f, indent=2, ensure_ascii=False)
+        training_args.deepspeed = deepspeed_config_path
+        logger.info(f"DeepSpeed配置已保存到: {deepspeed_config_path}")
     
     # 获取模型路径
     model_path = get_model_path(model_args.model_name_or_path, model_args.cache_dir)
@@ -348,19 +442,17 @@ def main():
     # 创建量化配置
     quantization_config = create_quantization_config(model_args)
     
-    # 在加载模型前进一步确保禁用DeepSpeed
-    import accelerate
-    if hasattr(accelerate, 'utils') and hasattr(accelerate.utils, 'environment'):
-        accelerate.utils.environment.DEEPSPEED_ENABLED = False
-    
     # 加载模型
     logger.info("加载模型...")
     model_kwargs = {
         "trust_remote_code": True,
         "cache_dir": model_args.cache_dir,
         "torch_dtype": torch.float16,
-        "device_map": "auto",  # 明确设置device_map避免DeepSpeed自动检测
     }
+    
+    # DeepSpeed会自动处理device_map，所以只在非DeepSpeed模式下设置
+    if not model_args.use_deepspeed:
+        model_kwargs["device_map"] = "auto"
     
     if quantization_config is not None:
         model_kwargs["quantization_config"] = quantization_config
@@ -415,10 +507,6 @@ def main():
         label_pad_token_id=-100,
         pad_to_multiple_of=8
     )
-    
-    # 确保禁用DeepSpeed
-    if hasattr(training_args, 'deepspeed'):
-        training_args.deepspeed = None
     
     # 创建训练器
     trainer = Trainer(

@@ -172,6 +172,41 @@ logging.getLogger('deepspeed').setLevel(logging.WARNING)
 
 **注意**: 如果确实需要使用DeepSpeed进行大规模训练，请保留依赖并通过配置文件明确启用。
 
+### 如何启用DeepSpeed训练
+
+如果需要使用DeepSpeed进行大规模训练，可以按以下方式配置：
+
+1. **安装DeepSpeed依赖**:
+```bash
+pip install deepspeed>=0.10.0
+```
+
+2. **在配置文件中启用**:
+```json
+{
+    "use_deepspeed": true,
+    "deepspeed_stage": 2,
+    "per_device_train_batch_size": 8,
+    "gradient_accumulation_steps": 2
+}
+```
+
+3. **运行训练**:
+```bash
+python fine_tune_qwen.py --config_file configs/train_config_deepspeed.json
+```
+
+**DeepSpeed优势**:
+- 大幅减少GPU内存使用
+- 支持更大的模型和批次大小
+- 自动优化器状态分片
+- 支持多GPU并行训练
+
+**注意事项**:
+- ZeRO Stage 3与LoRA可能不兼容，建议使用Stage 2
+- 单GPU训练时优势不明显，多GPU时效果更佳
+- 会自动生成`deepspeed_config.json`配置文件
+
 #### 6. 系统内核版本警告
 **警告信息**: 
 ```
@@ -214,4 +249,5 @@ training_args.label_names = ["labels"]
 - **2024-12-19**: 添加 transformers==4.51.3 兼容性问题解决方案
 - **2024-12-19**: 添加训练过程中警告信息的解决方案
 - **2024-12-19**: 添加系统内核版本警告和PEFT模型标签名称警告的解决方案
-- **2024-12-19**: 修复DeepSpeed重复初始化问题，移除非必要依赖 
+- **2024-12-19**: 修复DeepSpeed重复初始化问题，移除非必要依赖
+- **2024-12-19**: 新增DeepSpeed分布式训练支持，可选择启用或禁用 
