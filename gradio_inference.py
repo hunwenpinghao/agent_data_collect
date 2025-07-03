@@ -13,7 +13,7 @@ import logging
 import threading
 import time
 from typing import Optional, Tuple, List
-from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig, AutoConfig, TextIteratorStreamer
+from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig, AutoConfig
 from peft import PeftModel, PeftConfig
 import gc
 
@@ -337,86 +337,73 @@ class ModelInference:
     
     def _generate_stream(self, inputs, generate_kwargs, conversation, prompt, input_length, debug):
         """
-        流式生成回复，使用TextIteratorStreamer实现高效流式输出
+        流式生成回复，使用简单的逐步生成实现
         """
         try:
             # 计算最大新token数
             max_new_tokens = min(generate_kwargs.get("max_length", 512) - input_length, 1024)
             
-            # 创建TextIteratorStreamer
-            streamer = TextIteratorStreamer(
-                self.tokenizer,
-                timeout=60.0,
-                skip_prompt=True,
-                skip_special_tokens=True
-            )
-            
-            # 准备生成参数
-            stream_kwargs = {
-                "input_ids": inputs.input_ids,
-                "attention_mask": inputs.attention_mask,
-                "max_new_tokens": max_new_tokens,
-                "temperature": generate_kwargs["temperature"],
-                "top_p": generate_kwargs["top_p"],
-                "top_k": generate_kwargs["top_k"],
-                "repetition_penalty": generate_kwargs["repetition_penalty"],
-                "do_sample": generate_kwargs["do_sample"],
-                "pad_token_id": generate_kwargs["pad_token_id"],
-                "eos_token_id": generate_kwargs["eos_token_id"],
-                "no_repeat_ngram_size": generate_kwargs.get("no_repeat_ngram_size", 3),
-                "streamer": streamer,
-            }
-            
-            # 在后台线程中运行生成
-            generation_thread = threading.Thread(
-                target=self.model.generate,
-                kwargs=stream_kwargs
-            )
-            generation_thread.daemon = True
-            generation_thread.start()
-            
-            # 流式输出
+            current_ids = inputs.input_ids.clone()
+            current_attention = inputs.attention_mask.clone()
             current_response = ""
-            buffer = ""
             
-            try:
-                for new_text in streamer:
-                    if new_text is None:
+            # 逐步生成
+            with torch.no_grad():
+                for step in range(max_new_tokens):
+                    # 生成下一个token
+                    outputs = self.model.generate(
+                        current_ids,
+                        attention_mask=current_attention,
+                        max_new_tokens=1,
+                        temperature=generate_kwargs["temperature"],
+                        top_p=generate_kwargs["top_p"],
+                        top_k=generate_kwargs["top_k"],
+                        repetition_penalty=generate_kwargs["repetition_penalty"],
+                        do_sample=generate_kwargs["do_sample"],
+                        pad_token_id=generate_kwargs["pad_token_id"],
+                        eos_token_id=generate_kwargs["eos_token_id"],
+                    )
+                    
+                    # 检查是否生成了结束token
+                    new_token_id = outputs[0, -1].item()
+                    if new_token_id == self.tokenizer.eos_token_id:
                         break
                     
-                    buffer += new_text
+                    # 更新序列
+                    current_ids = outputs
+                    current_attention = torch.ones_like(current_ids)
                     
-                    # 提取干净的回复部分
-                    clean_response = self._extract_and_clean_streaming_response(
-                        buffer, conversation, prompt
+                    # 解码到目前为止的生成内容
+                    generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+                    
+                    # 提取回复部分
+                    new_response = self._extract_and_clean_streaming_response(
+                        generated_text, conversation, prompt
                     )
                     
                     # 只有当回复有实际更新时才yield
-                    if clean_response != current_response:
-                        current_response = clean_response
+                    if new_response != current_response and len(new_response.strip()) > 0:
+                        current_response = new_response
                         
                         # 调试输出
                         if debug:
-                            logger.info(f"🔍 流式更新: {repr(new_text)} -> {repr(current_response)}")
+                            new_token = self.tokenizer.decode([new_token_id], skip_special_tokens=True)
+                            logger.info(f"🔍 新token: {repr(new_token)} -> 当前回复: {repr(current_response[:50])}...")
                         
                         yield current_response
                         
-                        # 小延迟以避免更新过快
-                        time.sleep(0.01)
-                
-            except Exception as e:
-                logger.warning(f"流式输出过程中出现错误: {e}")
-            
-            # 等待生成线程完成
-            generation_thread.join(timeout=5.0)
+                        # 小延迟让界面更新
+                        time.sleep(0.05)
             
             # 最终清理
             if current_response:
                 final_response = self._clean_response(current_response, conversation, prompt)
-                if final_response != current_response:
+                if final_response != current_response and len(final_response.strip()) > 0:
                     yield final_response
-            else:
-                yield "抱歉，生成过程中出现问题，请重试。"
+            
+            # 如果没有生成任何内容
+            if not current_response.strip():
+                yield "抱歉，模型没有生成有效内容，请重试。"
             
         except Exception as e:
             error_msg = f"❌ 流式生成失败: {str(e)}"
@@ -744,8 +731,8 @@ def create_gradio_interface():
                     
                     stream_mode = gr.Checkbox(
                         label="⚡ 流式生成",
-                        value=True,
-                        info="实时显示生成过程"
+                        value=False,  # 默认关闭，避免兼容性问题
+                        info="实时显示生成过程（如果遇到问题请关闭）"
                     )
         
         # 控制LoRA路径显示
@@ -786,52 +773,60 @@ def create_gradio_interface():
         # 发送消息
         def send_message(history, message, max_len, temp, top_p_val, top_k_val, rep_penalty, debug, stream):
             if not message.strip():
-                yield history, ""
-                return
+                return history, ""
             
             # 添加用户消息到历史记录
             history.append([message, ""])
             
-            if stream:
-                # 流式生成
-                response_generator = model_inference.generate_response(
-                    message, max_len, temp, top_p_val, top_k_val, rep_penalty, debug, stream=True
-                )
-                
-                full_response = ""
-                for partial_response in response_generator:
-                    full_response = partial_response
+            try:
+                if stream:
+                    # 流式生成
+                    response_generator = model_inference.generate_response(
+                        message, max_len, temp, top_p_val, top_k_val, rep_penalty, debug, stream=True
+                    )
                     
-                    # 在调试模式下，添加额外信息（只在最后添加一次）
-                    display_response = full_response
-                    if debug and not full_response.startswith("❌"):
-                        debug_info = f"\n\n[调试信息] 模型类型: {model_inference.model_type or '未加载'}"
-                        if model_inference.loaded_model_path:
-                            debug_info += f"\n[调试信息] 基础模型: {model_inference.loaded_model_path}"
-                        if model_inference.loaded_lora_path:
-                            debug_info += f"\n[调试信息] LoRA路径: {model_inference.loaded_lora_path}"
-                        display_response = full_response + debug_info
-                    
-                    # 更新对话历史中的最后一条消息
-                    history[-1][1] = display_response
+                    # 先返回空的回复，然后逐步更新
                     yield history, ""
                     
-            else:
-                # 一次性生成
-                response = model_inference.generate_response(
-                    message, max_len, temp, top_p_val, top_k_val, rep_penalty, debug, stream=False
-                )
-                
-                # 在调试模式下，添加额外信息
-                if debug and not response.startswith("❌"):
-                    response += f"\n\n[调试信息] 模型类型: {model_inference.model_type or '未加载'}"
-                    if model_inference.loaded_model_path:
-                        response += f"\n[调试信息] 基础模型: {model_inference.loaded_model_path}"
-                    if model_inference.loaded_lora_path:
-                        response += f"\n[调试信息] LoRA路径: {model_inference.loaded_lora_path}"
-                
-                # 更新对话历史
-                history[-1][1] = response
+                    for partial_response in response_generator:
+                        # 在调试模式下，添加额外信息
+                        display_response = partial_response
+                        if debug and not partial_response.startswith("❌"):
+                            debug_info = f"\n\n[调试信息] 模型类型: {model_inference.model_type or '未加载'}"
+                            if model_inference.loaded_model_path:
+                                debug_info += f"\n[调试信息] 基础模型: {model_inference.loaded_model_path}"
+                            if model_inference.loaded_lora_path:
+                                debug_info += f"\n[调试信息] LoRA路径: {model_inference.loaded_lora_path}"
+                            display_response = partial_response + debug_info
+                        
+                        # 更新对话历史中的最后一条消息
+                        history[-1][1] = display_response
+                        yield history, ""
+                        
+                else:
+                    # 一次性生成 - 先显示正在生成的状态
+                    history[-1][1] = "🤔 正在思考中..."
+                    yield history, ""
+                    
+                    response = model_inference.generate_response(
+                        message, max_len, temp, top_p_val, top_k_val, rep_penalty, debug, stream=False
+                    )
+                    
+                    # 在调试模式下，添加额外信息
+                    if debug and not response.startswith("❌"):
+                        response += f"\n\n[调试信息] 模型类型: {model_inference.model_type or '未加载'}"
+                        if model_inference.loaded_model_path:
+                            response += f"\n[调试信息] 基础模型: {model_inference.loaded_model_path}"
+                        if model_inference.loaded_lora_path:
+                            response += f"\n[调试信息] LoRA路径: {model_inference.loaded_lora_path}"
+                    
+                    # 更新对话历史
+                    history[-1][1] = response
+                    yield history, ""
+                    
+            except Exception as e:
+                error_msg = f"❌ 生成失败: {str(e)}"
+                history[-1][1] = error_msg
                 yield history, ""
         
         send_btn.click(
