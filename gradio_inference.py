@@ -1,0 +1,600 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Gradio Web界面用于微调模型推理
+支持LoRA、完整微调(Full FT)和QLoRA模型
+"""
+
+import os
+import json
+import torch
+import gradio as gr
+import logging
+from typing import Optional, Tuple, List
+from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig, AutoConfig
+from peft import PeftModel, PeftConfig
+import gc
+
+# 设置兼容性环境变量
+os.environ.setdefault('TOKENIZERS_PARALLELISM', 'false')
+os.environ.setdefault('TRANSFORMERS_NO_ADVISORY_WARNINGS', 'true')
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+def apply_transformers_patch():
+    """
+    应用monkey patch来修复transformers库的NoneType错误
+    """
+    try:
+        import transformers.modeling_utils as modeling_utils
+        
+        # 保存原始的post_init方法
+        original_post_init = modeling_utils.PreTrainedModel.post_init
+        
+        def patched_post_init(self):
+            """修复后的post_init方法"""
+            try:
+                # 检查并修复可能的None值
+                if hasattr(self.config, 'pretraining_tp') and self.config.pretraining_tp is None:
+                    self.config.pretraining_tp = 1
+                
+                # 修复张量并行样式错误
+                tensor_parallel_attrs = ['tensor_parallel_style', 'parallel_style']
+                supported_styles = ['tp', 'dp', 'pp', 'cp']
+                
+                for attr in tensor_parallel_attrs:
+                    if hasattr(self.config, attr):
+                        current_value = getattr(self.config, attr)
+                        if current_value is not None and current_value not in supported_styles:
+                            setattr(self.config, attr, 'tp')
+                
+                # 检查其他可能的None值和无效值
+                config_fixes = {
+                    'attn_implementation': 'eager',
+                    'rope_scaling': None,
+                    'use_sliding_window': False,
+                    'sliding_window': 4096,
+                    'max_window_layers': 28,
+                    'attention_dropout': 0.0,
+                    'tensor_parallel_style': 'tp',
+                    'parallel_style': 'tp', 
+                    'tensor_parallel': False,
+                    'sequence_parallel': False,
+                }
+                
+                for key, default_value in config_fixes.items():
+                    if hasattr(self.config, key) and getattr(self.config, key) is None:
+                        setattr(self.config, key, default_value)
+                
+                return original_post_init(self)
+                
+            except Exception as e:
+                logger.warning(f"post_init修复过程中出现错误: {e}")
+                pass
+        
+        # 应用patch
+        modeling_utils.PreTrainedModel.post_init = patched_post_init
+        logger.info("✅ 已应用transformers post_init修复补丁")
+        return True
+        
+    except Exception as e:
+        logger.warning(f"❌ 无法应用transformers补丁: {e}")
+        return False
+
+def load_model_with_patch(model_path: str, **kwargs):
+    """
+    加载模型并修复可能的配置问题
+    """
+    try:
+        # 应用transformers补丁
+        apply_transformers_patch()
+        
+        logger.info(f"正在加载配置: {model_path}")
+        config = AutoConfig.from_pretrained(model_path, trust_remote_code=True)
+        
+        # 基础修复
+        config_fixes = {
+            'attn_implementation': 'eager',
+            'pretraining_tp': 1,
+            'torch_dtype': torch.float16,
+            'use_cache': True,
+            'attention_dropout': 0.0,
+            'hidden_dropout': 0.0,
+            'rope_scaling': None,
+            'tie_word_embeddings': False,
+            '_name_or_path': model_path,
+            'tensor_parallel_style': 'tp',
+            'parallel_style': 'tp',
+            'tensor_parallel': False,
+            'sequence_parallel': False,
+        }
+        
+        # 应用修复
+        for key, default_value in config_fixes.items():
+            if not hasattr(config, key) or getattr(config, key) is None:
+                setattr(config, key, default_value)
+        
+        # 使用修复后的配置
+        kwargs['config'] = config
+        kwargs.setdefault('trust_remote_code', True)
+        kwargs.setdefault('torch_dtype', torch.float16)
+        
+        model = AutoModelForCausalLM.from_pretrained(model_path, **kwargs)
+        logger.info("✅ 模型加载成功！")
+        
+        return model
+        
+    except Exception as e:
+        logger.error(f"使用补丁方法加载模型失败: {e}")
+        raise e
+
+class ModelInference:
+    def __init__(self):
+        self.model = None
+        self.tokenizer = None
+        self.model_type = None
+        self.loaded_model_path = None
+        self.loaded_lora_path = None
+        
+    def load_model(self, model_path: str, model_type: str, lora_path: Optional[str] = None, 
+                   quantization: str = "none") -> Tuple[str, str]:
+        """
+        加载模型
+        
+        Args:
+            model_path: 基础模型路径
+            model_type: 模型类型 (lora, full_ft, qlora)
+            lora_path: LoRA适配器路径（仅当model_type为lora或qlora时需要）
+            quantization: 量化类型 (none, 4bit, 8bit)
+            
+        Returns:
+            加载状态信息
+        """
+        try:
+            # 清理之前的模型
+            if self.model is not None:
+                del self.model
+                del self.tokenizer
+                gc.collect()
+                torch.cuda.empty_cache() if torch.cuda.is_available() else None
+            
+            # 加载tokenizer
+            logger.info("加载tokenizer...")
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                model_path,
+                trust_remote_code=True,
+                use_fast=False
+            )
+            
+            if self.tokenizer.pad_token is None:
+                self.tokenizer.pad_token = self.tokenizer.eos_token
+            
+            # 设置量化配置
+            quantization_config = None
+            if quantization == "4bit":
+                quantization_config = BitsAndBytesConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_compute_dtype=torch.float16,
+                    bnb_4bit_use_double_quant=True,
+                    bnb_4bit_quant_type="nf4",
+                )
+            elif quantization == "8bit":
+                quantization_config = BitsAndBytesConfig(load_in_8bit=True)
+            
+            # 设置模型加载参数
+            model_kwargs = {
+                "torch_dtype": torch.float16,
+                "device_map": "auto",
+                "trust_remote_code": True,
+                "low_cpu_mem_usage": True,
+            }
+            
+            if quantization_config is not None:
+                model_kwargs["quantization_config"] = quantization_config
+            
+            # 加载基础模型
+            logger.info(f"加载基础模型: {model_path}")
+            if model_type == "full_ft":
+                # 完整微调模型直接加载
+                self.model = load_model_with_patch(model_path, **model_kwargs)
+            else:
+                # LoRA或QLoRA需要先加载基础模型
+                self.model = load_model_with_patch(model_path, **model_kwargs)
+                
+                # 加载LoRA适配器
+                if lora_path and os.path.exists(lora_path):
+                    logger.info(f"加载LoRA适配器: {lora_path}")
+                    self.model = PeftModel.from_pretrained(self.model, lora_path)
+                else:
+                    return "❌ 错误", f"LoRA路径不存在或未提供: {lora_path}"
+            
+            self.model_type = model_type
+            self.loaded_model_path = model_path
+            self.loaded_lora_path = lora_path
+            
+            # 模型信息
+            device_info = f"设备: {next(self.model.parameters()).device}"
+            model_info = f"模型类型: {model_type}, 量化: {quantization}"
+            
+            success_msg = f"✅ 模型加载成功！\n{model_info}\n{device_info}"
+            logger.info(success_msg)
+            
+            return "✅ 成功", success_msg
+            
+        except Exception as e:
+            error_msg = f"❌ 模型加载失败: {str(e)}"
+            logger.error(error_msg)
+            return "❌ 失败", error_msg
+    
+    def generate_response(self, prompt: str, max_length: int = 512, temperature: float = 0.7,
+                         top_p: float = 0.9, top_k: int = 50, repetition_penalty: float = 1.1) -> str:
+        """
+        生成回复
+        """
+        if self.model is None or self.tokenizer is None:
+            return "❌ 请先加载模型！"
+        
+        try:
+            # 构建对话格式
+            conversation = f"<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
+            
+            # 编码输入
+            inputs = self.tokenizer(conversation, return_tensors="pt").to(self.model.device)
+            
+            # 生成参数
+            generate_kwargs = {
+                "max_length": min(max_length, 2048),
+                "temperature": temperature,
+                "top_p": top_p,
+                "top_k": top_k,
+                "repetition_penalty": repetition_penalty,
+                "do_sample": True if temperature > 0 else False,
+                "pad_token_id": self.tokenizer.eos_token_id,
+                "eos_token_id": self.tokenizer.eos_token_id,
+                "no_repeat_ngram_size": 3,
+            }
+            
+            # 生成回复
+            with torch.no_grad():
+                outputs = self.model.generate(
+                    inputs.input_ids,
+                    attention_mask=inputs.attention_mask,
+                    **generate_kwargs
+                )
+            
+            # 解码输出
+            generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            
+            # 提取assistant的回复
+            assistant_start = generated_text.find("<|im_start|>assistant\n")
+            if assistant_start != -1:
+                assistant_start += len("<|im_start|>assistant\n")
+                response = generated_text[assistant_start:].strip()
+                
+                # 移除可能的结束标记
+                if response.endswith("<|im_end|>"):
+                    response = response[:-len("<|im_end|>")].strip()
+                
+                return response
+            else:
+                return generated_text.strip()
+                
+        except Exception as e:
+            error_msg = f"❌ 生成失败: {str(e)}"
+            logger.error(error_msg)
+            return error_msg
+    
+    def get_model_info(self) -> str:
+        """获取当前模型信息"""
+        if self.model is None:
+            return "❌ 未加载模型"
+        
+        try:
+            # 基本信息
+            info = []
+            info.append(f"📊 模型信息")
+            info.append(f"─────────────")
+            info.append(f"类型: {self.model_type}")
+            info.append(f"基础模型: {self.loaded_model_path}")
+            
+            if self.loaded_lora_path:
+                info.append(f"LoRA路径: {self.loaded_lora_path}")
+            
+            # 设备信息
+            device = next(self.model.parameters()).device
+            info.append(f"设备: {device}")
+            
+            # 参数统计
+            if hasattr(self.model, 'print_trainable_parameters'):
+                # PEFT模型
+                trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+                total_params = sum(p.numel() for p in self.model.parameters())
+                info.append(f"可训练参数: {trainable_params:,}")
+                info.append(f"总参数: {total_params:,}")
+                info.append(f"训练参数比例: {100 * trainable_params / total_params:.2f}%")
+            else:
+                # 普通模型
+                total_params = sum(p.numel() for p in self.model.parameters())
+                info.append(f"总参数: {total_params:,}")
+            
+            return "\n".join(info)
+            
+        except Exception as e:
+            return f"❌ 获取模型信息失败: {str(e)}"
+
+# 全局模型实例
+model_inference = ModelInference()
+
+def create_gradio_interface():
+    """创建Gradio界面"""
+    
+    # 自定义CSS
+    custom_css = """
+    .gradio-container {
+        max-width: 1200px !important;
+        margin: auto !important;
+    }
+    .model-info {
+        background-color: #f0f0f0;
+        padding: 10px;
+        border-radius: 5px;
+        font-family: monospace;
+        white-space: pre-wrap;
+    }
+    .status-success {
+        color: #28a745;
+        font-weight: bold;
+    }
+    .status-error {
+        color: #dc3545;
+        font-weight: bold;
+    }
+    """
+    
+    with gr.Blocks(css=custom_css, title="🤖 微调模型推理系统") as demo:
+        gr.Markdown("# 🤖 微调模型推理系统")
+        gr.Markdown("支持LoRA、完整微调(Full FT)和QLoRA模型的加载与推理")
+        
+        with gr.Row():
+            with gr.Column(scale=1):
+                gr.Markdown("## 📂 模型配置")
+                
+                # 模型类型选择
+                model_type = gr.Radio(
+                    choices=["lora", "full_ft", "qlora"],
+                    value="lora",
+                    label="模型类型",
+                    info="选择微调模型类型"
+                )
+                
+                # 基础模型路径
+                base_model_path = gr.Textbox(
+                    value="Qwen/Qwen2.5-0.5B-Instruct",
+                    label="基础模型路径",
+                    info="HuggingFace模型名称或本地路径"
+                )
+                
+                # LoRA适配器路径
+                lora_path = gr.Textbox(
+                    value="./output_qwen",
+                    label="LoRA适配器路径",
+                    info="LoRA/QLoRA适配器的保存路径",
+                    visible=True
+                )
+                
+                # 量化选项
+                quantization = gr.Radio(
+                    choices=["none", "4bit", "8bit"],
+                    value="none",
+                    label="量化类型",
+                    info="选择量化方式以节省显存"
+                )
+                
+                # 加载按钮
+                load_btn = gr.Button("🔄 加载模型", variant="primary")
+                
+                # 加载状态
+                load_status = gr.Textbox(
+                    label="加载状态",
+                    interactive=False,
+                    lines=3
+                )
+                
+                # 模型信息
+                model_info_display = gr.Textbox(
+                    label="模型信息",
+                    interactive=False,
+                    lines=8,
+                    elem_classes=["model-info"]
+                )
+                
+                # 获取模型信息按钮
+                info_btn = gr.Button("📊 获取模型信息")
+                
+            with gr.Column(scale=2):
+                gr.Markdown("## 💬 对话生成")
+                
+                # 聊天历史
+                chatbot = gr.Chatbot(
+                    label="对话历史",
+                    height=400,
+                    avatar_images=["👤", "🤖"]
+                )
+                
+                # 用户输入
+                user_input = gr.Textbox(
+                    label="输入消息",
+                    placeholder="请输入您的问题...",
+                    lines=2
+                )
+                
+                with gr.Row():
+                    send_btn = gr.Button("📤 发送", variant="primary")
+                    clear_btn = gr.Button("🗑️ 清空对话")
+                
+                gr.Markdown("## ⚙️ 生成参数")
+                
+                with gr.Row():
+                    max_length = gr.Slider(
+                        minimum=50,
+                        maximum=2048,
+                        value=512,
+                        step=50,
+                        label="最大长度"
+                    )
+                    
+                    temperature = gr.Slider(
+                        minimum=0.1,
+                        maximum=2.0,
+                        value=0.7,
+                        step=0.1,
+                        label="温度"
+                    )
+                
+                with gr.Row():
+                    top_p = gr.Slider(
+                        minimum=0.1,
+                        maximum=1.0,
+                        value=0.9,
+                        step=0.05,
+                        label="Top-p"
+                    )
+                    
+                    top_k = gr.Slider(
+                        minimum=1,
+                        maximum=100,
+                        value=50,
+                        step=1,
+                        label="Top-k"
+                    )
+                
+                repetition_penalty = gr.Slider(
+                    minimum=1.0,
+                    maximum=2.0,
+                    value=1.1,
+                    step=0.1,
+                    label="重复惩罚"
+                )
+        
+        # 控制LoRA路径显示
+        def update_lora_visibility(model_type_value):
+            return gr.update(visible=model_type_value in ["lora", "qlora"])
+        
+        model_type.change(
+            fn=update_lora_visibility,
+            inputs=[model_type],
+            outputs=[lora_path]
+        )
+        
+        # 加载模型
+        def load_model_wrapper(model_type_val, base_model_val, lora_path_val, quantization_val):
+            if model_type_val in ["lora", "qlora"] and not lora_path_val:
+                return "❌ 错误", "请提供LoRA适配器路径"
+            
+            status, message = model_inference.load_model(
+                base_model_val, 
+                model_type_val, 
+                lora_path_val if model_type_val in ["lora", "qlora"] else None,
+                quantization_val
+            )
+            return message
+        
+        load_btn.click(
+            fn=load_model_wrapper,
+            inputs=[model_type, base_model_path, lora_path, quantization],
+            outputs=[load_status]
+        )
+        
+        # 获取模型信息
+        info_btn.click(
+            fn=lambda: model_inference.get_model_info(),
+            outputs=[model_info_display]
+        )
+        
+        # 发送消息
+        def send_message(history, message, max_len, temp, top_p_val, top_k_val, rep_penalty):
+            if not message.strip():
+                return history, ""
+            
+            # 生成回复
+            response = model_inference.generate_response(
+                message, max_len, temp, top_p_val, top_k_val, rep_penalty
+            )
+            
+            # 更新对话历史
+            history.append([message, response])
+            return history, ""
+        
+        send_btn.click(
+            fn=send_message,
+            inputs=[chatbot, user_input, max_length, temperature, top_p, top_k, repetition_penalty],
+            outputs=[chatbot, user_input]
+        )
+        
+        # 回车发送
+        user_input.submit(
+            fn=send_message,
+            inputs=[chatbot, user_input, max_length, temperature, top_p, top_k, repetition_penalty],
+            outputs=[chatbot, user_input]
+        )
+        
+        # 清空对话
+        clear_btn.click(
+            fn=lambda: [],
+            outputs=[chatbot]
+        )
+        
+        # 示例输入
+        gr.Markdown("## 📝 示例输入")
+        example_inputs = [
+            "请为一家咖啡店写一段小红书风格的文案",
+            "如何制作一杯完美的拿铁咖啡？",
+            "推荐几家上海的网红咖啡店",
+            "写一个关于春天的短诗",
+            "解释一下人工智能的基本概念"
+        ]
+        
+        examples = gr.Examples(
+            examples=example_inputs,
+            inputs=user_input,
+            label="点击示例快速输入"
+        )
+        
+        # 页面底部信息
+        gr.Markdown("""
+        ---
+        ### 📖 使用说明
+        1. **选择模型类型**：LoRA、完整微调(Full FT)或QLoRA
+        2. **配置模型路径**：设置基础模型和LoRA适配器路径
+        3. **选择量化方式**：可选择4bit或8bit量化以节省显存
+        4. **加载模型**：点击"加载模型"按钮
+        5. **开始对话**：在输入框中输入问题并发送
+        6. **调整参数**：根据需要调整生成参数
+        
+        ### 💡 提示
+        - 首次加载模型可能需要较长时间下载
+        - 量化可以显著减少显存使用，但可能略微影响质量
+        - 温度越高生成越随机，越低越确定
+        - Top-p和Top-k控制生成的多样性
+        """)
+    
+    return demo
+
+def main():
+    """主函数"""
+    # 创建界面
+    demo = create_gradio_interface()
+    
+    # 启动服务
+    demo.launch(
+        server_name="0.0.0.0",
+        server_port=7860,
+        share=False,
+        show_error=True,
+        show_tips=True,
+        enable_queue=True
+    )
+
+if __name__ == "__main__":
+    main() 
