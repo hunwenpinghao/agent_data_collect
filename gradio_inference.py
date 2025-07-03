@@ -232,20 +232,16 @@ class ModelInference:
     def generate_response(self, prompt: str, max_length: int = 512, temperature: float = 0.7,
                          top_p: float = 0.9, top_k: int = 50, repetition_penalty: float = 1.1, debug: bool = False, stream: bool = False):
         """
-        生成回复，支持流式或一次性生成
+        生成回复 - 暂时禁用流式生成，总是返回字符串
         
         Args:
-            stream: 是否使用流式生成
+            stream: 是否使用流式生成（暂时禁用）
             
         Returns:
-            如果stream=True，返回生成器；否则返回字符串
+            总是返回字符串（不会返回生成器）
         """
         if self.model is None or self.tokenizer is None:
-            if stream:
-                yield "❌ 请先加载模型！"
-                return
-            else:
-                return "❌ 请先加载模型！"
+            return "❌ 请先加载模型！"
         
         try:
             # 构建对话格式
@@ -268,22 +264,20 @@ class ModelInference:
                 "no_repeat_ngram_size": 3,
             }
             
+            # 流式生成已被禁用，始终使用普通模式
             if stream:
-                # 流式生成 - 暂时禁用，避免兼容性问题
-                logger.warning("流式生成暂时禁用，使用普通模式")
-                # return self._generate_stream(inputs, generate_kwargs, conversation, prompt, input_length, debug)
+                logger.warning("流式生成已禁用，使用普通模式")
             
             # 使用普通模式生成
-                # 一次性生成
-                with torch.no_grad():
-                    outputs = self.model.generate(
-                        inputs.input_ids,
-                        attention_mask=inputs.attention_mask,
-                        **generate_kwargs
-                    )
-                
-                # 解码输出
-                generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            with torch.no_grad():
+                outputs = self.model.generate(
+                    inputs.input_ids,
+                    attention_mask=inputs.attention_mask,
+                    **generate_kwargs
+                )
+            
+            # 解码输出
+            generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
             
             # 调试输出
             if debug:
@@ -332,10 +326,7 @@ class ModelInference:
         except Exception as e:
             error_msg = f"❌ 生成失败: {str(e)}"
             logger.error(error_msg)
-            if stream:
-                yield error_msg
-            else:
-                return error_msg
+            return error_msg
     
     def _generate_stream(self, inputs, generate_kwargs, conversation, prompt, input_length, debug):
         """
@@ -782,82 +773,34 @@ def create_gradio_interface():
             history.append([message, ""])
             
             try:
+                # 流式生成已被禁用，总是使用普通模式
                 if stream:
-                    # 流式生成
-                    try:
-                        response_generator = model_inference.generate_response(
-                            message, max_len, temp, top_p_val, top_k_val, rep_penalty, debug, stream=True
-                        )
-                        
-                        # 检查是否真的是生成器
-                        if hasattr(response_generator, '__iter__') and hasattr(response_generator, '__next__'):
-                            # 先返回空的回复，然后逐步更新
-                            yield history, ""
-                            
-                            for partial_response in response_generator:
-                                # 确保partial_response是字符串
-                                if not isinstance(partial_response, str):
-                                    partial_response = str(partial_response)
-                                
-                                # 在调试模式下，添加额外信息
-                                display_response = partial_response
-                                if debug and not partial_response.startswith("❌"):
-                                    debug_info = f"\n\n[调试信息] 模型类型: {model_inference.model_type or '未加载'}"
-                                    if model_inference.loaded_model_path:
-                                        debug_info += f"\n[调试信息] 基础模型: {model_inference.loaded_model_path}"
-                                    if model_inference.loaded_lora_path:
-                                        debug_info += f"\n[调试信息] LoRA路径: {model_inference.loaded_lora_path}"
-                                    display_response = partial_response + debug_info
-                                
-                                # 更新对话历史中的最后一条消息
-                                history[-1][1] = display_response
-                                yield history, ""
-                        else:
-                            # 如果不是生成器，当作普通响应处理
-                            response = str(response_generator)
-                            history[-1][1] = response
-                            yield history, ""
-                            
-                    except Exception as stream_error:
-                        logger.error(f"流式生成错误: {stream_error}")
-                        # 回退到非流式模式
-                        history[-1][1] = "⚠️ 流式生成失败，使用普通模式..."
-                        yield history, ""
-                        
-                        response = model_inference.generate_response(
-                            message, max_len, temp, top_p_val, top_k_val, rep_penalty, debug, stream=False
-                        )
-                        
-                        if not isinstance(response, str):
-                            response = str(response)
-                        
-                        history[-1][1] = response
-                        yield history, ""
-                        
-                else:
-                    # 一次性生成 - 先显示正在生成的状态
-                    history[-1][1] = "🤔 正在思考中..."
-                    yield history, ""
-                    
-                    response = model_inference.generate_response(
-                        message, max_len, temp, top_p_val, top_k_val, rep_penalty, debug, stream=False
-                    )
-                    
-                    # 确保响应是字符串
-                    if not isinstance(response, str):
-                        response = str(response)
-                    
-                    # 在调试模式下，添加额外信息
-                    if debug and not response.startswith("❌"):
-                        response += f"\n\n[调试信息] 模型类型: {model_inference.model_type or '未加载'}"
-                        if model_inference.loaded_model_path:
-                            response += f"\n[调试信息] 基础模型: {model_inference.loaded_model_path}"
-                        if model_inference.loaded_lora_path:
-                            response += f"\n[调试信息] LoRA路径: {model_inference.loaded_lora_path}"
-                    
-                    # 更新对话历史
-                    history[-1][1] = response
-                    yield history, ""
+                    logger.warning("流式生成已被禁用，使用普通模式")
+                
+                # 使用普通模式生成
+                # 一次性生成 - 先显示正在生成的状态
+                history[-1][1] = "🤔 正在思考中..."
+                yield history, ""
+                
+                response = model_inference.generate_response(
+                    message, max_len, temp, top_p_val, top_k_val, rep_penalty, debug, stream=False
+                )
+                
+                # 确保响应是字符串
+                if not isinstance(response, str):
+                    response = str(response)
+                
+                # 在调试模式下，添加额外信息
+                if debug and not response.startswith("❌"):
+                    response += f"\n\n[调试信息] 模型类型: {model_inference.model_type or '未加载'}"
+                    if model_inference.loaded_model_path:
+                        response += f"\n[调试信息] 基础模型: {model_inference.loaded_model_path}"
+                    if model_inference.loaded_lora_path:
+                        response += f"\n[调试信息] LoRA路径: {model_inference.loaded_lora_path}"
+                
+                # 更新对话历史
+                history[-1][1] = response
+                yield history, ""
                     
             except Exception as e:
                 error_msg = f"❌ 生成失败: {str(e)}"
