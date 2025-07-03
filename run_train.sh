@@ -138,7 +138,7 @@ fi
 
 # 检查依赖
 echo "检查Python依赖..."
-python -c "import torch, transformers, peft, bitsandbytes; print('✓ 依赖检查通过')" || {
+python3 -c "import torch, transformers, peft, bitsandbytes; print('✓ 依赖检查通过')" || {
     echo "错误: 缺少必要的Python依赖，请运行:"
     echo "pip install -r requirements_stable.txt"
     exit 1
@@ -149,7 +149,7 @@ echo ""
 echo "==================== 训练配置 ===================="
 echo "配置文件: $CONFIG_FILE"
 echo "微调类型: $CONFIG_TYPE"
-python -c "
+python3 -c "
 import json
 with open('$CONFIG_FILE', 'r', encoding='utf-8') as f:
     config = json.load(f)
@@ -174,10 +174,10 @@ echo ""
 
 # 开始训练
 echo "开始训练..."
-echo "命令: python fine_tune_qwen.py --config_file $CONFIG_FILE"
+echo "命令: python3 fine_tune_qwen.py --config_file $CONFIG_FILE"
 echo ""
 
-python fine_tune_qwen.py --config_file "$CONFIG_FILE"
+python3 fine_tune_qwen.py --config_file "$CONFIG_FILE"
 
 echo ""
 echo "训练完成！" 

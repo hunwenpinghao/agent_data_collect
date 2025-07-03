@@ -101,6 +101,9 @@ sudo swapon /swapfile
   "dataloader_num_workers": 0,         // 减少数据加载器内存
   "save_total_limit": 1,               // 减少保存的检查点数量
   "fp16": true,                        // 使用半精度浮点数
+  "evaluation_strategy": "steps",      // 评估策略
+  "eval_strategy": "steps",            // 兼容性参数（必需）
+  "save_strategy": "steps",            // 保存策略
   "deepspeed_stage": 3,                // ZeRO优化级别
   "cpu_offload": true                  // CPU卸载优化器状态
 }
