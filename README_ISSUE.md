@@ -61,6 +61,82 @@ python -c "import transformers; print(transformers.__version__)"
 
 ---
 
+## 3. 训练过程中的警告信息
+
+### 问题描述
+训练过程中出现大量警告信息，影响日志可读性：
+
+```
+2025-07-03 14:30:14.708410: I tensorflow/core/util/port.cc:113] oneDNN custom operations are on...
+2025-07-03 14:30:14.751284: I tensorflow/core/platform/cpu_feature_guard.cc:210] This TensorFlow binary is optimized...
+2025-07-03 14:30:15.656643: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Could not find TensorRT
+[2025-07-03 14:30:16,178] [INFO] [real_accelerator.py:254:get_accelerator] Setting ds_accelerator to cuda (auto detect)
+```
+
+### 警告类型及解决方案
+
+#### 1. TensorFlow oneDNN 警告
+**警告信息**: `oneDNN custom operations are on. You may see slightly different numerical results...`
+
+**解决方案**: 设置环境变量禁用oneDNN优化
+```bash
+export TF_ENABLE_ONEDNN_OPTS=0
+```
+
+#### 2. CPU 优化指令警告
+**警告信息**: `This TensorFlow binary is optimized to use available CPU instructions...`
+
+**解决方案**: 设置环境变量隐藏CPU优化信息
+```bash
+export TF_CPP_MIN_LOG_LEVEL=2
+```
+
+#### 3. TensorRT 警告
+**警告信息**: `TF-TRT Warning: Could not find TensorRT`
+
+**解决方案**: 
+- 如果不需要TensorRT，可以忽略此警告
+- 如果需要TensorRT加速，安装NVIDIA TensorRT：
+```bash
+pip install nvidia-tensorrt
+```
+
+#### 4. 一键解决方案
+在训练脚本开头或环境中设置以下变量：
+
+```bash
+# 添加到 ~/.bashrc 或训练脚本开头
+export TF_ENABLE_ONEDNN_OPTS=0
+export TF_CPP_MIN_LOG_LEVEL=2
+export PYTHONWARNINGS="ignore"
+```
+
+或者在Python脚本中添加：
+```python
+import os
+import warnings
+
+# 禁用TensorFlow警告
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+
+# 禁用Python警告
+warnings.filterwarnings('ignore')
+```
+
+#### 5. DeepSpeed 信息
+**信息**: `Setting ds_accelerator to cuda (auto detect)`
+
+这是正常的DeepSpeed初始化信息，表示系统正确检测到CUDA。如果不使用DeepSpeed，可以在训练配置中禁用。
+
+### 注意事项
+- 这些警告通常不影响训练效果
+- 禁用警告可能会隐藏一些有用的调试信息
+- 建议在调试时保留警告，在生产环境中禁用
+
+---
+
 ## 更新日志
 
-- **2024-12-19**: 添加 transformers==4.51.3 兼容性问题解决方案 
+- **2024-12-19**: 添加 transformers==4.51.3 兼容性问题解决方案
+- **2024-12-19**: 添加训练过程中警告信息的解决方案 

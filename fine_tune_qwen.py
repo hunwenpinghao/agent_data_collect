@@ -12,10 +12,18 @@ from dataclasses import dataclass, field
 from typing import Optional, Dict, Any, List
 import logging
 
-# 设置国内环境的镜像源
+# 设置国内环境的镜像源和警告抑制
 os.environ.setdefault('HF_ENDPOINT', 'https://hf-mirror.com')
 os.environ.setdefault('TOKENIZERS_PARALLELISM', 'false')
 os.environ.setdefault('TRANSFORMERS_NO_ADVISORY_WARNINGS', 'true')
+
+# 禁用TensorFlow相关警告
+os.environ.setdefault('TF_ENABLE_ONEDNN_OPTS', '0')
+os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '2')
+
+# 禁用Python警告
+import warnings
+warnings.filterwarnings('ignore')
 
 # 导入必要的库
 try:
