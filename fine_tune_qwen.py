@@ -408,6 +408,22 @@ def main():
         os.environ.setdefault('ACCELERATE_USE_DEEPSPEED', 'false')
         os.environ.setdefault('TRANSFORMERS_NO_DEEPSPEED', 'true')
 
+    # 验证和修复训练参数
+    if training_args.load_best_model_at_end:
+        if data_args.eval_data_path is None:
+            logger.warning("没有设置验证数据路径，但启用了load_best_model_at_end，将禁用此选项")
+            training_args.load_best_model_at_end = False
+        else:
+            # 确保评估策略和保存策略匹配
+            if training_args.evaluation_strategy == IntervalStrategy.NO:
+                logger.info("检测到评估策略为NO，但需要进行评估，设置为STEPS")
+                training_args.evaluation_strategy = IntervalStrategy.STEPS
+            
+            # 确保评估和保存策略匹配
+            if training_args.evaluation_strategy != training_args.save_strategy:
+                logger.info(f"调整评估策略以匹配保存策略: {training_args.save_strategy}")
+                training_args.evaluation_strategy = training_args.save_strategy
+    
     # 设置随机种子
     set_seed(training_args.seed if hasattr(training_args, 'seed') else 42)
     

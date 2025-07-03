@@ -1,6 +1,7 @@
 {
     "model_name_or_path": "Qwen/Qwen2.5-0.5B-Instruct",
     "data_path": "data/zhc_store_recommend_doubao_refined.jsonl,data/zhc_store_recommend_reason_doubao.jsonl",
+    "eval_data_path": "data/store_xhs_rewrite_samples_doubao_output.jsonl",
     "output_dir": "./output_qwen_multi",
     "overwrite_output_dir": true,
     "max_seq_length": 2048,

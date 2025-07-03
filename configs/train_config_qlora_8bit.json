@@ -13,6 +13,7 @@
     "quantization_bit": 8,
     
     "data_path": "data/zhc_store_recommend_doubao.jsonl",
+    "eval_data_path": "data/store_xhs_rewrite_samples_doubao_output.jsonl",
     "max_seq_length": 2048,
     
     "output_dir": "./output_qwen_qlora_8bit",

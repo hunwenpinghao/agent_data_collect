@@ -236,11 +236,45 @@ No label_names provided for model class `PeftModelForCausalLM`. Since `PeftModel
 training_args.label_names = ["labels"]
 ```
 
+#### 8. 训练参数配置错误
+**错误信息**: 
+```
+ValueError: --load_best_model_at_end requires the save and eval strategy to match, but found
+- Evaluation strategy: IntervalStrategy.NO
+- Save strategy: SaveStrategy.STEPS
+```
+
+**原因**: 当设置 `load_best_model_at_end: true` 时，必须确保：
+1. 有验证数据集（`eval_data_path` 不为空）
+2. 评估策略和保存策略匹配
+3. 评估策略不能为 "no"
+
+**解决方案**: 
+1. **自动修复**（代码已内置）: 系统会自动检测并修复参数不匹配问题
+2. **手动修复**: 在配置文件中确保：
+```json
+{
+    "eval_data_path": "data/your_eval_data.jsonl",
+    "evaluation_strategy": "steps",
+    "save_strategy": "steps",
+    "load_best_model_at_end": true
+}
+```
+
+3. **或者禁用最佳模型保存**:
+```json
+{
+    "load_best_model_at_end": false,
+    "evaluation_strategy": "no"
+}
+```
+
 ### 注意事项
 - 这些警告通常不影响训练效果
 - 禁用警告可能会隐藏一些有用的调试信息
 - 建议在调试时保留警告，在生产环境中禁用
 - 内核版本警告比较重要，建议关注系统稳定性
+- 配置参数时要确保逻辑一致性，特别是评估相关设置
 
 ---
 
@@ -250,4 +284,5 @@ training_args.label_names = ["labels"]
 - **2024-12-19**: 添加训练过程中警告信息的解决方案
 - **2024-12-19**: 添加系统内核版本警告和PEFT模型标签名称警告的解决方案
 - **2024-12-19**: 修复DeepSpeed重复初始化问题，移除非必要依赖
-- **2024-12-19**: 新增DeepSpeed分布式训练支持，可选择启用或禁用 
+- **2024-12-19**: 新增DeepSpeed分布式训练支持，可选择启用或禁用
+- **2024-12-19**: 修复训练参数配置错误，添加自动验证和修复逻辑 
