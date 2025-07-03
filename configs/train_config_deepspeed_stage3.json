@@ -1,0 +1,63 @@
+{
+    "_description": "DeepSpeed训练配置 - ZeRO Stage 3 (最大内存优化)",
+    "_usage": "python fine_tune_qwen.py --config_file configs/train_config_deepspeed_stage3.json",
+    
+    "model_name_or_path": "Qwen/Qwen2.5-0.5B-Instruct",
+    "cache_dir": "./models",
+    "use_lora": true,
+    "use_qlora": false,
+    "use_deepspeed": true,
+    "deepspeed_stage": 3,
+    "lora_r": 32,
+    "lora_alpha": 16,
+    "lora_dropout": 0.1,
+    "lora_target_modules": "q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj",
+    
+    "data_path": "data/zhc_store_recommend_doubao.jsonl",
+    "eval_data_path": "data/store_xhs_rewrite_samples_doubao_output.jsonl",
+    "max_seq_length": 1536,
+    
+    "output_dir": "./output_qwen_deepspeed_stage3",
+    "overwrite_output_dir": true,
+    "per_device_train_batch_size": 2,
+    "per_device_eval_batch_size": 2,
+    "gradient_accumulation_steps": 8,
+    "learning_rate": 1e-4,
+    "num_train_epochs": 3,
+    "lr_scheduler_type": "cosine",
+    "warmup_steps": 100,
+    "logging_steps": 20,
+    "save_steps": 500,
+    "eval_steps": 500,
+    "evaluation_strategy": "steps",
+    "save_strategy": "steps",
+    "save_total_limit": 2,
+    "load_best_model_at_end": true,
+    "metric_for_best_model": "eval_loss",
+    "greater_is_better": false,
+    "dataloader_num_workers": 1,
+    "remove_unused_columns": false,
+    "fp16": true,
+    "seed": 42,
+    
+    "_notes": {
+        "deepspeed_features": [
+            "ZeRO Stage 3: 参数、梯度、优化器状态全部分片",
+            "参数自动offload到CPU",
+            "最大程度节省GPU内存",
+            "适合大模型或低内存GPU"
+        ],
+        "memory_optimizations": [
+            "最小batch size: 2",
+            "最大gradient accumulation: 8",
+            "减少序列长度到1536",
+            "减少LoRA rank到32",
+            "最少dataloader workers"
+        ],
+        "performance_notes": [
+            "训练速度会比Stage 2慢",
+            "但能训练更大的模型",
+            "适合GPU内存<8GB的情况"
+        ]
+    }
+} 

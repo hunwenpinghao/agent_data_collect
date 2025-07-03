@@ -12,7 +12,7 @@ show_help() {
     echo "用法: $0 [选项]"
     echo ""
     echo "选项:"
-    echo "  -t, --type TYPE        选择微调类型: full, lora, qlora, qlora_8bit, deepspeed (默认: lora)"
+    echo "  -t, --type TYPE        选择微调类型: full, lora, qlora, qlora_8bit, deepspeed, stage2_offload, stage3, minimal (默认: lora)"
     echo "  -c, --config FILE      使用自定义配置文件"
     echo "  -h, --help            显示此帮助信息"
     echo ""
@@ -21,13 +21,19 @@ show_help() {
     echo "  lora         LoRA微调 (平衡选择，推荐)"
     echo "  qlora        QLoRA 4位量化微调 (显存需求最低)"
     echo "  qlora_8bit   QLoRA 8位量化微调 (中等显存需求)"
-    echo "  deepspeed    DeepSpeed分布式训练 (多GPU高效训练)"
+    echo "  deepspeed    DeepSpeed ZeRO Stage 2 (标准内存优化)"
+    echo "  stage2_offload  DeepSpeed ZeRO Stage 2 + CPU Offload (平衡内存和性能)"
+    echo "  stage3       DeepSpeed ZeRO Stage 3 (最大内存优化)"
+    echo "  minimal      最小内存配置 (紧急情况，GPU内存<4GB)"
     echo ""
     echo "示例:"
     echo "  $0                              # 使用默认LoRA配置"
     echo "  $0 -t full                      # 使用全参数微调"
     echo "  $0 -t qlora                     # 使用QLoRA 4位量化"
-    echo "  $0 -t deepspeed                 # 使用DeepSpeed分布式训练"
+    echo "  $0 -t deepspeed                 # 使用DeepSpeed ZeRO Stage 2"
+    echo "  $0 -t stage2_offload            # 使用ZeRO Stage 2 + CPU Offload"
+    echo "  $0 -t stage3                    # 使用ZeRO Stage 3 (最大内存节省)"
+    echo "  $0 -t minimal                   # 最小内存配置 (紧急情况)"
     echo "  $0 -c configs/my_config.json    # 使用自定义配置"
 }
 
@@ -94,11 +100,23 @@ else
             ;;
         deepspeed)
             CONFIG_FILE="configs/train_config_deepspeed.json"
-            echo "使用DeepSpeed分布式训练配置"
+            echo "使用DeepSpeed ZeRO Stage 2配置"
+            ;;
+        stage2_offload)
+            CONFIG_FILE="configs/train_config_deepspeed_stage2_offload.json"
+            echo "使用DeepSpeed ZeRO Stage 2 + CPU Offload配置"
+            ;;
+        stage3)
+            CONFIG_FILE="configs/train_config_deepspeed_stage3.json"
+            echo "使用DeepSpeed ZeRO Stage 3配置 (最大内存优化)"
+            ;;
+        minimal)
+            CONFIG_FILE="configs/train_config_deepspeed_minimal.json"
+            echo "使用最小内存配置 (紧急情况使用)"
             ;;
         *)
             echo "错误: 不支持的微调类型: $CONFIG_TYPE"
-            echo "支持的类型: full, lora, qlora, qlora_8bit, deepspeed"
+            echo "支持的类型: full, lora, qlora, qlora_8bit, deepspeed, stage2_offload, stage3, minimal"
             exit 1
             ;;
     esac
@@ -139,7 +157,10 @@ print(f\"模型: {config.get('model_name_or_path', 'N/A')}\")
 print(f\"数据: {config.get('data_path', 'N/A')}\")
 print(f\"输出目录: {config.get('output_dir', 'N/A')}\")
 if config.get('use_deepspeed'):
-    print(f\"DeepSpeed: 启用 (ZeRO Stage {config.get('deepspeed_stage', 'N/A')})\")
+    stage = config.get('deepspeed_stage', 'N/A')
+    cpu_offload = config.get('cpu_offload', False)
+    offload_text = ' + CPU Offload' if cpu_offload else ''
+    print(f\"DeepSpeed: 启用 (ZeRO Stage {stage}{offload_text})\")
 if config.get('use_lora'):
     print(f\"LoRA rank: {config.get('lora_r', 'N/A')}\")
 elif config.get('use_qlora'):

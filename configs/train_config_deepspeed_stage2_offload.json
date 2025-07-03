@@ -1,0 +1,64 @@
+{
+    "_description": "DeepSpeed训练配置 - ZeRO Stage 2 + CPU Offload (平衡内存和性能)",
+    "_usage": "python fine_tune_qwen.py --config_file configs/train_config_deepspeed_stage2_offload.json",
+    
+    "model_name_or_path": "Qwen/Qwen2.5-0.5B-Instruct",
+    "cache_dir": "./models",
+    "use_lora": true,
+    "use_qlora": false,
+    "use_deepspeed": true,
+    "deepspeed_stage": 2,
+    "cpu_offload": true,
+    "lora_r": 48,
+    "lora_alpha": 16,
+    "lora_dropout": 0.1,
+    "lora_target_modules": "q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj",
+    
+    "data_path": "data/zhc_store_recommend_doubao.jsonl",
+    "eval_data_path": "data/store_xhs_rewrite_samples_doubao_output.jsonl",
+    "max_seq_length": 1792,
+    
+    "output_dir": "./output_qwen_deepspeed_stage2_offload",
+    "overwrite_output_dir": true,
+    "per_device_train_batch_size": 3,
+    "per_device_eval_batch_size": 3,
+    "gradient_accumulation_steps": 6,
+    "learning_rate": 1e-4,
+    "num_train_epochs": 3,
+    "lr_scheduler_type": "cosine",
+    "warmup_steps": 100,
+    "logging_steps": 15,
+    "save_steps": 500,
+    "eval_steps": 500,
+    "evaluation_strategy": "steps",
+    "save_strategy": "steps",
+    "save_total_limit": 2,
+    "load_best_model_at_end": true,
+    "metric_for_best_model": "eval_loss",
+    "greater_is_better": false,
+    "dataloader_num_workers": 2,
+    "remove_unused_columns": false,
+    "fp16": true,
+    "seed": 42,
+    
+    "_notes": {
+        "deepspeed_features": [
+            "ZeRO Stage 2: 参数和优化器状态分片",
+            "CPU Offload: 优化器状态offload到CPU",
+            "平衡内存使用和训练速度",
+            "适合中等GPU内存(6-12GB)"
+        ],
+        "memory_optimizations": [
+            "中等batch size: 3",
+            "适中gradient accumulation: 6",
+            "序列长度: 1792",
+            "中等LoRA rank: 48",
+            "启用CPU offload"
+        ],
+        "performance_notes": [
+            "比Stage 3快，比普通Stage 2省内存",
+            "需要足够的CPU内存",
+            "适合大多数训练场景"
+        ]
+    }
+} 

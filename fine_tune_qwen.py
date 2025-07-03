@@ -114,6 +114,10 @@ class ModelArguments:
         default=2,
         metadata={"help": "DeepSpeed ZeRO阶段，支持1,2,3"}
     )
+    cpu_offload: bool = field(
+        default=False,
+        metadata={"help": "是否启用CPU offload优化器状态"}
+    )
 
 @dataclass
 class DataArguments:
@@ -350,7 +354,7 @@ def create_deepspeed_config(model_args: ModelArguments, training_args: CustomTra
         "zero_optimization": {
             "stage": model_args.deepspeed_stage,
             "offload_optimizer": {
-                "device": "cpu" if model_args.deepspeed_stage == 3 else "none"
+                "device": "cpu" if (model_args.deepspeed_stage == 3 or model_args.cpu_offload) else "none"
             },
             "offload_param": {
                 "device": "cpu" if model_args.deepspeed_stage == 3 else "none"

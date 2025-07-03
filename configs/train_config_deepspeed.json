@@ -19,9 +19,9 @@
     
     "output_dir": "./output_qwen_deepspeed",
     "overwrite_output_dir": true,
-    "per_device_train_batch_size": 8,
-    "per_device_eval_batch_size": 8,
-    "gradient_accumulation_steps": 2,
+    "per_device_train_batch_size": 4,
+    "per_device_eval_batch_size": 4,
+    "gradient_accumulation_steps": 4,
     "learning_rate": 1e-4,
     "num_train_epochs": 3,
     "lr_scheduler_type": "cosine",
@@ -30,13 +30,12 @@
     "save_steps": 500,
     "eval_steps": 500,
     "evaluation_strategy": "steps",
-    "eval_strategy": "steps",
     "save_strategy": "steps",
     "save_total_limit": 3,
     "load_best_model_at_end": true,
     "metric_for_best_model": "eval_loss",
     "greater_is_better": false,
-    "dataloader_num_workers": 4,
+    "dataloader_num_workers": 2,
     "remove_unused_columns": false,
     "fp16": true,
     "seed": 42,
@@ -48,10 +47,11 @@
             "内存优化和通信重叠",
             "支持多GPU训练"
         ],
-        "usage_tips": [
-            "确保安装了DeepSpeed: pip install deepspeed",
-            "使用多GPU训练时效果更明显",
-            "ZeRO Stage 3会自动将参数offload到CPU"
+        "memory_optimizations": [
+            "减少batch size到4",
+            "增加gradient accumulation到4",
+            "减少dataloader workers",
+            "使用fp16精度"
         ]
     }
 } 
