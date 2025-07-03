@@ -269,9 +269,11 @@ class ModelInference:
             }
             
             if stream:
-                # 流式生成
-                return self._generate_stream(inputs, generate_kwargs, conversation, prompt, input_length, debug)
-            else:
+                # 流式生成 - 暂时禁用，避免兼容性问题
+                logger.warning("流式生成暂时禁用，使用普通模式")
+                # return self._generate_stream(inputs, generate_kwargs, conversation, prompt, input_length, debug)
+            
+            # 使用普通模式生成
                 # 一次性生成
                 with torch.no_grad():
                     outputs = self.model.generate(
@@ -732,7 +734,8 @@ def create_gradio_interface():
                     stream_mode = gr.Checkbox(
                         label="⚡ 流式生成",
                         value=False,  # 默认关闭，避免兼容性问题
-                        info="实时显示生成过程（如果遇到问题请关闭）"
+                        info="暂时禁用，使用普通生成模式",
+                        interactive=False  # 暂时禁用交互
                     )
         
         # 控制LoRA路径显示
@@ -781,26 +784,54 @@ def create_gradio_interface():
             try:
                 if stream:
                     # 流式生成
-                    response_generator = model_inference.generate_response(
-                        message, max_len, temp, top_p_val, top_k_val, rep_penalty, debug, stream=True
-                    )
-                    
-                    # 先返回空的回复，然后逐步更新
-                    yield history, ""
-                    
-                    for partial_response in response_generator:
-                        # 在调试模式下，添加额外信息
-                        display_response = partial_response
-                        if debug and not partial_response.startswith("❌"):
-                            debug_info = f"\n\n[调试信息] 模型类型: {model_inference.model_type or '未加载'}"
-                            if model_inference.loaded_model_path:
-                                debug_info += f"\n[调试信息] 基础模型: {model_inference.loaded_model_path}"
-                            if model_inference.loaded_lora_path:
-                                debug_info += f"\n[调试信息] LoRA路径: {model_inference.loaded_lora_path}"
-                            display_response = partial_response + debug_info
+                    try:
+                        response_generator = model_inference.generate_response(
+                            message, max_len, temp, top_p_val, top_k_val, rep_penalty, debug, stream=True
+                        )
                         
-                        # 更新对话历史中的最后一条消息
-                        history[-1][1] = display_response
+                        # 检查是否真的是生成器
+                        if hasattr(response_generator, '__iter__') and hasattr(response_generator, '__next__'):
+                            # 先返回空的回复，然后逐步更新
+                            yield history, ""
+                            
+                            for partial_response in response_generator:
+                                # 确保partial_response是字符串
+                                if not isinstance(partial_response, str):
+                                    partial_response = str(partial_response)
+                                
+                                # 在调试模式下，添加额外信息
+                                display_response = partial_response
+                                if debug and not partial_response.startswith("❌"):
+                                    debug_info = f"\n\n[调试信息] 模型类型: {model_inference.model_type or '未加载'}"
+                                    if model_inference.loaded_model_path:
+                                        debug_info += f"\n[调试信息] 基础模型: {model_inference.loaded_model_path}"
+                                    if model_inference.loaded_lora_path:
+                                        debug_info += f"\n[调试信息] LoRA路径: {model_inference.loaded_lora_path}"
+                                    display_response = partial_response + debug_info
+                                
+                                # 更新对话历史中的最后一条消息
+                                history[-1][1] = display_response
+                                yield history, ""
+                        else:
+                            # 如果不是生成器，当作普通响应处理
+                            response = str(response_generator)
+                            history[-1][1] = response
+                            yield history, ""
+                            
+                    except Exception as stream_error:
+                        logger.error(f"流式生成错误: {stream_error}")
+                        # 回退到非流式模式
+                        history[-1][1] = "⚠️ 流式生成失败，使用普通模式..."
+                        yield history, ""
+                        
+                        response = model_inference.generate_response(
+                            message, max_len, temp, top_p_val, top_k_val, rep_penalty, debug, stream=False
+                        )
+                        
+                        if not isinstance(response, str):
+                            response = str(response)
+                        
+                        history[-1][1] = response
                         yield history, ""
                         
                 else:
@@ -811,6 +842,10 @@ def create_gradio_interface():
                     response = model_inference.generate_response(
                         message, max_len, temp, top_p_val, top_k_val, rep_penalty, debug, stream=False
                     )
+                    
+                    # 确保响应是字符串
+                    if not isinstance(response, str):
+                        response = str(response)
                     
                     # 在调试模式下，添加额外信息
                     if debug and not response.startswith("❌"):
@@ -826,6 +861,7 @@ def create_gradio_interface():
                     
             except Exception as e:
                 error_msg = f"❌ 生成失败: {str(e)}"
+                logger.error(f"发送消息错误: {e}")
                 history[-1][1] = error_msg
                 yield history, ""
         
@@ -881,11 +917,11 @@ def create_gradio_interface():
         - 温度越高生成越随机，越低越确定
         - Top-p和Top-k控制生成的多样性
         
-        ### ⚡ 流式生成
-        - **实时显示**：开启流式生成可以实时看到模型的生成过程
-        - **更好体验**：长回复时不需要等待，可以边生成边阅读
-        - **性能优化**：使用高效的TextIteratorStreamer实现
-        - **可选功能**：可以关闭流式生成，使用传统的一次性生成
+        ### ⚡ 流式生成（暂时禁用）
+        - **当前状态**：流式生成功能暂时禁用，使用普通生成模式
+        - **生成过程**：会显示"正在思考中..."然后显示完整回复
+        - **稳定性**：普通模式更稳定，避免兼容性问题
+        - **后续优化**：将在后续版本中重新启用流式生成
         
         ### 🔧 问题排查
         - **如果回复包含多余内容**：开启调试模式查看详细信息
