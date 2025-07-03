@@ -108,6 +108,7 @@ pip install nvidia-tensorrt
 # 添加到 ~/.bashrc 或训练脚本开头
 export TF_ENABLE_ONEDNN_OPTS=0
 export TF_CPP_MIN_LOG_LEVEL=2
+export DEEPSPEED_LOG_LEVEL=WARNING
 export PYTHONWARNINGS="ignore"
 ```
 
@@ -115,19 +116,40 @@ export PYTHONWARNINGS="ignore"
 ```python
 import os
 import warnings
+import logging
 
 # 禁用TensorFlow警告
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+os.environ['DEEPSPEED_LOG_LEVEL'] = 'WARNING'
 
 # 禁用Python警告
 warnings.filterwarnings('ignore')
+
+# 抑制第三方库日志
+logging.getLogger('deepspeed').setLevel(logging.WARNING)
+logging.getLogger('transformers.modeling_utils').setLevel(logging.WARNING)
 ```
 
-#### 5. DeepSpeed 信息
-**信息**: `Setting ds_accelerator to cuda (auto detect)`
+#### 5. DeepSpeed 冗余日志
+**信息**: 
+```
+[INFO] [real_accelerator.py:254:get_accelerator] Setting ds_accelerator to cuda (auto detect)
+[INFO] [logging.py:107:log_dist] [Rank -1] [TorchCheckpointEngine] Initialized with serialization = False
+```
 
-这是正常的DeepSpeed初始化信息，表示系统正确检测到CUDA。如果不使用DeepSpeed，可以在训练配置中禁用。
+这些是DeepSpeed的初始化信息，会重复出现影响日志可读性。
+
+**解决方案**: 设置DeepSpeed日志级别
+```bash
+export DEEPSPEED_LOG_LEVEL=WARNING
+```
+
+或在Python代码中设置：
+```python
+import logging
+logging.getLogger('deepspeed').setLevel(logging.WARNING)
+```
 
 ### 注意事项
 - 这些警告通常不影响训练效果

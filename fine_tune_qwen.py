@@ -21,6 +21,9 @@ os.environ.setdefault('TRANSFORMERS_NO_ADVISORY_WARNINGS', 'true')
 os.environ.setdefault('TF_ENABLE_ONEDNN_OPTS', '0')
 os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '2')
 
+# 禁用DeepSpeed冗余日志
+os.environ.setdefault('DEEPSPEED_LOG_LEVEL', 'WARNING')
+
 # 禁用Python警告
 import warnings
 warnings.filterwarnings('ignore')
@@ -56,6 +59,12 @@ except ImportError as e:
 # 设置日志
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# 抑制DeepSpeed和其他第三方库的冗余日志
+logging.getLogger('deepspeed').setLevel(logging.WARNING)
+logging.getLogger('transformers.modeling_utils').setLevel(logging.WARNING)
+logging.getLogger('transformers.configuration_utils').setLevel(logging.WARNING)
+logging.getLogger('transformers.tokenization_utils_base').setLevel(logging.WARNING)
 
 @dataclass
 class ModelArguments:
