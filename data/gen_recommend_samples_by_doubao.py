@@ -78,7 +78,7 @@ def generate_recommendation_content_with_doubao(
             base_desc = sample["output"].split("亮点：")[1].split("...")[0]
 
             # 生成 instruction 和 input
-            instruction = f"根据提供的店铺信息，以小红书风格生成一段推荐内容，要求包含：一句话推荐语、亮点、必试推荐、小贴士。"
+            instruction = f"你是一个美食推荐官。根据提供的店铺信息，以小红书风格生成一段推荐内容，要求包含：一句话推荐语、亮点、必试推荐、小贴士。"
             sample["instruction"] = instruction
 
             input_text = f"""店铺名称：{name}
