@@ -115,7 +115,18 @@ load_credentials_from_csv() {
     # 第6列(索引5): Secret Access Key
     local app_id="${FIELDS[3]}"
     local access_key="${FIELDS[4]}"
-    local secret_key="${FIELDS[5]}"
+    local raw_secret_key="${FIELDS[5]}"
+    
+    # 解码Secret Key（如果是base64编码）
+    local secret_key="$raw_secret_key"
+    if [[ "$raw_secret_key" == *"==" ]]; then
+        # 看起来像base64编码，尝试解码
+        local decoded_sk=$(echo "$raw_secret_key" | base64 -d 2>/dev/null)
+        if [[ -n "$decoded_sk" ]]; then
+            secret_key="$decoded_sk"
+            print_info "检测到base64编码的Secret Key，已自动解码"
+        fi
+    fi
     
     # 验证提取的信息
     if [[ -z "$app_id" || -z "$access_key" || -z "$secret_key" ]]; then

@@ -33,6 +33,19 @@ def validate_json_file(file_path):
     except Exception as e:
         return False, f"❌ 读取失败: {e}"
 
+def detect_model_type(model_path):
+    """检测模型类型：完整模型还是LoRA适配器"""
+    adapter_config = model_path / 'adapter_config.json'
+    config_json = model_path / 'config.json'
+    adapter_model = model_path / 'adapter_model.safetensors'
+    
+    if adapter_config.exists() and adapter_model.exists():
+        return "lora"
+    elif config_json.exists():
+        return "full"
+    else:
+        return "unknown"
+
 def validate_model_directory(model_dir):
     """验证模型目录"""
     model_path = Path(model_dir)
@@ -41,21 +54,46 @@ def validate_model_directory(model_dir):
         print(f"❌ 模型目录不存在: {model_dir}")
         return False
     
+    # 检测模型类型
+    model_type = detect_model_type(model_path)
+    
     print(f"📁 验证模型目录: {model_dir}")
+    if model_type == "lora":
+        print("🔧 检测到 LoRA 适配器模型")
+    elif model_type == "full":
+        print("🔧 检测到完整模型")
+    else:
+        print("⚠️  未知模型类型")
     print("=" * 60)
     
-    # 定义文件检查规则
-    file_checks = {
-        'config.json': {'required': True, 'type': 'json', 'description': '模型配置文件'},
-        'model.safetensors': {'required': True, 'type': 'binary', 'description': '模型权重文件'},
-        'tokenizer.json': {'required': False, 'type': 'json', 'description': '分词器配置'},
-        'tokenizer_config.json': {'required': False, 'type': 'json', 'description': '分词器配置'},
-        'generation_config.json': {'required': False, 'type': 'json', 'description': '生成配置'},
-        'vocab.json': {'required': False, 'type': 'json', 'description': '词汇表'},
-        'merges.txt': {'required': False, 'type': 'text', 'description': 'BPE合并规则'},
-        'README.md': {'required': False, 'type': 'text', 'description': '模型说明文档'},
-        'LICENSE': {'required': False, 'type': 'text', 'description': '许可证文件'},
-    }
+    # 根据模型类型定义文件检查规则
+    if model_type == "lora":
+        file_checks = {
+            'adapter_config.json': {'required': True, 'type': 'json', 'description': 'LoRA适配器配置'},
+            'adapter_model.safetensors': {'required': True, 'type': 'binary', 'description': 'LoRA适配器权重'},
+            'tokenizer.json': {'required': True, 'type': 'json', 'description': '分词器配置'},
+            'tokenizer_config.json': {'required': True, 'type': 'json', 'description': '分词器配置'},
+            'vocab.json': {'required': False, 'type': 'json', 'description': '词汇表'},
+            'merges.txt': {'required': False, 'type': 'text', 'description': 'BPE合并规则'},
+            'special_tokens_map.json': {'required': False, 'type': 'json', 'description': '特殊token映射'},
+            'added_tokens.json': {'required': False, 'type': 'json', 'description': '添加的token'},
+            'configuration.json': {'required': False, 'type': 'json', 'description': '基础模型配置'},
+            'README.md': {'required': False, 'type': 'text', 'description': '模型说明文档'},
+            '.gitattributes': {'required': False, 'type': 'text', 'description': 'Git属性文件'},
+        }
+    else:
+        # 完整模型的检查规则（原来的规则）
+        file_checks = {
+            'config.json': {'required': True, 'type': 'json', 'description': '模型配置文件'},
+            'model.safetensors': {'required': True, 'type': 'binary', 'description': '模型权重文件'},
+            'tokenizer.json': {'required': False, 'type': 'json', 'description': '分词器配置'},
+            'tokenizer_config.json': {'required': False, 'type': 'json', 'description': '分词器配置'},
+            'generation_config.json': {'required': False, 'type': 'json', 'description': '生成配置'},
+            'vocab.json': {'required': False, 'type': 'json', 'description': '词汇表'},
+            'merges.txt': {'required': False, 'type': 'text', 'description': 'BPE合并规则'},
+            'README.md': {'required': False, 'type': 'text', 'description': '模型说明文档'},
+            'LICENSE': {'required': False, 'type': 'text', 'description': '许可证文件'},
+        }
     
     all_valid = True
     total_size = 0
@@ -90,22 +128,40 @@ def validate_model_directory(model_dir):
     print(f"📊 总文件大小: {check_file_size_total(total_size)}")
     
     # 检查模型配置
-    config_path = model_path / 'config.json'
-    if config_path.exists():
-        try:
-            with open(config_path, 'r', encoding='utf-8') as f:
-                config = json.load(f)
-            
-            print("\n🔧 模型配置信息:")
-            print(f"   模型类型: {config.get('model_type', '未知')}")
-            print(f"   架构: {config.get('architectures', ['未知'])[0] if config.get('architectures') else '未知'}")
-            print(f"   词汇表大小: {config.get('vocab_size', '未知')}")
-            print(f"   隐藏层大小: {config.get('hidden_size', '未知')}")
-            print(f"   注意力头数: {config.get('num_attention_heads', '未知')}")
-            print(f"   层数: {config.get('num_hidden_layers', '未知')}")
-            
-        except Exception as e:
-            print(f"⚠️  无法读取模型配置: {e}")
+    if model_type == "lora":
+        config_path = model_path / 'adapter_config.json'
+        if config_path.exists():
+            try:
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                
+                print("\n🔧 LoRA 配置信息:")
+                print(f"   PEFT类型: {config.get('peft_type', '未知')}")
+                print(f"   LoRA rank (r): {config.get('r', '未知')}")
+                print(f"   LoRA alpha: {config.get('lora_alpha', '未知')}")
+                print(f"   LoRA dropout: {config.get('lora_dropout', '未知')}")
+                print(f"   目标模块: {', '.join(config.get('target_modules', []))}")
+                print(f"   基础模型: {config.get('base_model_name_or_path', '未知')}")
+                
+            except Exception as e:
+                print(f"⚠️  无法读取LoRA配置: {e}")
+    else:
+        config_path = model_path / 'config.json'
+        if config_path.exists():
+            try:
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                
+                print("\n🔧 模型配置信息:")
+                print(f"   模型类型: {config.get('model_type', '未知')}")
+                print(f"   架构: {config.get('architectures', ['未知'])[0] if config.get('architectures') else '未知'}")
+                print(f"   词汇表大小: {config.get('vocab_size', '未知')}")
+                print(f"   隐藏层大小: {config.get('hidden_size', '未知')}")
+                print(f"   注意力头数: {config.get('num_attention_heads', '未知')}")
+                print(f"   层数: {config.get('num_hidden_layers', '未知')}")
+                
+            except Exception as e:
+                print(f"⚠️  无法读取模型配置: {e}")
     
     return all_valid
 

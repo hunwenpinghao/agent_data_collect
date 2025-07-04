@@ -330,6 +330,7 @@ def main():
     
     # AICC完整部署命令
     deploy_parser = subparsers.add_parser("deploy", help="AICC完整部署流程")
+    deploy_parser.add_argument("--config", type=str, default="aicc_config.json", help="AICC配置文件路径")
     deploy_parser.add_argument("--model_path", type=str, required=True, help="模型路径")
     deploy_parser.add_argument("--model_name", type=str, required=True, help="模型名称")
     deploy_parser.add_argument("--bucket_name", type=str, help="TOS存储桶名称（可选）")
@@ -339,20 +340,24 @@ def main():
     
     # 单步操作命令
     encrypt_parser = subparsers.add_parser("encrypt", help="仅加密和上传模型")
+    encrypt_parser.add_argument("--config", type=str, default="aicc_config.json", help="AICC配置文件路径")
     encrypt_parser.add_argument("--model_path", type=str, required=True, help="模型路径")
     encrypt_parser.add_argument("--model_name", type=str, required=True, help="模型名称")
     encrypt_parser.add_argument("--bucket_name", type=str, help="TOS存储桶名称（可选）")
     
     publish_parser = subparsers.add_parser("publish", help="发布已加密的模型")
+    publish_parser.add_argument("--config", type=str, default="aicc_config.json", help="AICC配置文件路径")
     publish_parser.add_argument("--encrypt_result", type=str, required=True, help="加密结果JSON文件")
     publish_parser.add_argument("--model_name", type=str, required=True, help="模型名称")
     
     # 测试命令
     test_parser = subparsers.add_parser("test", help="测试部署的模型")
+    test_parser.add_argument("--config", type=str, default="aicc_config.json", help="AICC配置文件路径")
     test_parser.add_argument("--deployment_id", type=str, required=True, help="部署ID")
     
     # 查询命令
     info_parser = subparsers.add_parser("info", help="查询端点信息")
+    info_parser.add_argument("--config", type=str, default="aicc_config.json", help="AICC配置文件路径")
     info_parser.add_argument("--deployment_id", type=str, required=True, help="部署ID")
     
     # SDK安装指导

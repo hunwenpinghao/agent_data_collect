@@ -1,0 +1,387 @@
+# ================================
+# AI/ML 项目 .gitignore
+# ================================
+
+deploy_ark/aicc_config.json
+deploy_ark/user.csv
+
+# ===== 模型权重和相关文件 =====
+# PyTorch 模型文件
+*.pt
+*.pth
+*.bin
+*.ckpt
+*.safetensors
+
+# TensorFlow 模型文件
+*.h5
+*.hdf5
+*.pb
+saved_model/
+checkpoints/
+
+# ONNX 模型文件
+*.onnx
+
+# 模型目录（包含大型模型文件）
+models/
+model/
+checkpoints/
+checkpoint/
+weights/
+pretrained/
+fine_tuned/
+
+# ===== 项目特定的模型目录 =====
+output_qwen/
+deploy_ark/output_qwen/
+upload_ready/
+cache/
+.cache/
+
+# 训练相关文件
+runs/
+logs/
+tensorboard_logs/
+wandb/
+mlruns/
+
+# ===== 数据文件 =====
+# 大型数据集
+data/
+dataset/
+datasets/
+
+# 数据文件格式
+*.jsonl
+*.parquet
+*.h5
+*.hdf5
+*.npz
+*.pkl
+*.pickle
+
+# CSV 文件（可能很大）
+# *.csv  # 如果需要保留小的CSV文件，可以注释这行
+
+# ===== 图片和媒体文件 =====
+# 图片格式
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.bmp
+*.tiff
+*.tif
+*.webp
+*.svg
+*.ico
+
+# 音频格式
+*.mp3
+*.wav
+*.flac
+*.aac
+*.ogg
+*.m4a
+
+# 视频格式
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.flv
+*.wmv
+*.webm
+
+# 图片目录
+images/
+imgs/
+pictures/
+media/
+assets/images/
+static/images/
+
+# ===== Python 相关 =====
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Translations
+*.mo
+*.pot
+
+# Django stuff:
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Flask stuff:
+instance/
+.webassets-cache
+
+# Scrapy stuff:
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# PEP 582
+__pypackages__/
+
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# ===== 日志和临时文件 =====
+# 日志文件
+*.log
+*.out
+*.err
+log/
+logs/
+
+# 临时文件
+tmp/
+temp/
+.tmp/
+.temp/
+
+# 备份文件
+*.bak
+*.backup
+*~
+*.swp
+*.swo
+
+# ===== IDE 和编辑器 =====
+# VSCode
+.vscode/
+
+# PyCharm
+.idea/
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.vim
+.vimrc
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# ===== 操作系统文件 =====
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.tmp
+*.temp
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ===== Docker 相关 =====
+# Docker
+.dockerignore
+*.dockerignore
+
+# ===== Git 相关 =====
+# Git patches
+*.patch
+*.diff
+
+# ===== 配置文件（包含敏感信息） =====
+# 配置文件
+config.ini
+config.json
+settings.json
+secrets.json
+credentials.json
+.secrets
+.credentials
+
+# API 密钥
+.api_key
+.api_keys
+api_key.txt
+*.key
+
+# ===== 其他大文件和缓存 =====
+# Hugging Face 缓存
+.cache/huggingface/
+.cache/transformers/
+
+# 模型缓存
+model_cache/
+.model_cache/
+
+# 下载的文件
+downloads/
+download/
+
+# 输出文件
+output/
+outputs/
+results/
+
+# 压缩文件
+*.zip
+*.tar.gz
+*.tar.bz2
+*.rar
+*.7z
+
+# ===== 项目特定文件 =====
+# 上传脚本生成的日志
+upload_modelscope.log
+
+# 训练输出
+training_output/
+eval_output/
+
+# 生成的图表和报告
+reports/
+plots/
+figures/
+
+# 注释：可根据具体项目需求调整以下配置
+# 如果需要保留某些文件，可以使用 !filename 来排除忽略
+# 例如：
+# !important_model.pt
+# !small_dataset.csv 
