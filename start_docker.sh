@@ -16,7 +16,8 @@ DOCKER_IMAGE=registry.aibee.cn/aibee/visualglm:bizevo.v1.0.agent_modelscope
 docker pull ${DOCKER_IMAGE}
 
 #CUDA_VISIBLE_DEVICES=6 \
-docker run --rm -it --gpus 6 \
+# docker run --rm -it --gpus 6 \
+nvidia-docker run --rm -it \
     -v /home/${USER}:/home/${USER} \
     -v /ssd/${USER}:/ssd/${USER} \
     -v /training/${USER}:/training/${USER} \
