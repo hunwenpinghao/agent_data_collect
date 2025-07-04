@@ -435,6 +435,14 @@ def main():
     # 创建输出目录
     os.makedirs(training_args.output_dir, exist_ok=True)
     
+    # 设置TensorBoard日志目录
+    if training_args.report_to == "tensorboard":
+        tensorboard_log_dir = os.path.join(training_args.output_dir, "tensorboard_logs")
+        os.makedirs(tensorboard_log_dir, exist_ok=True)
+        os.environ['TENSORBOARD_LOG_DIR'] = tensorboard_log_dir
+        logger.info(f"TensorBoard日志将保存到: {tensorboard_log_dir}")
+        logger.info("启动TensorBoard查看训练进度: tensorboard --logdir=" + tensorboard_log_dir)
+    
     # 创建DeepSpeed配置
     deepspeed_config = create_deepspeed_config(model_args, training_args)
     if deepspeed_config:
@@ -541,6 +549,12 @@ def main():
     
     # 开始训练
     logger.info("开始训练...")
+    if training_args.report_to == "tensorboard":
+        tensorboard_log_dir = os.path.join(training_args.output_dir, "tensorboard_logs")
+        logger.info("📊 TensorBoard已启用！")
+        logger.info(f"📈 查看训练进度: tensorboard --logdir={tensorboard_log_dir}")
+        logger.info("🌐 然后在浏览器打开: http://localhost:6006")
+    
     trainer.train()
     
     # 保存模型
