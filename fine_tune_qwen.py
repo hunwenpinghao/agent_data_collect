@@ -161,6 +161,7 @@ class CustomTrainingArguments(TrainingArguments):
     fp16: bool = field(default=True)
     label_names: Optional[List[str]] = field(default_factory=lambda: ["labels"])
     deepspeed: Optional[str] = field(default=None)
+    report_to: str = field(default="tensorboard")
 
 class SFTDataset(Dataset):
     """SFT数据集类"""
