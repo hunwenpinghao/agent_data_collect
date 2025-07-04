@@ -30,7 +30,8 @@ def fix_lora_config(lora_path):
     problematic_keys = [
         'corda_config', 'eva_config', 'layer_replication',
         'layers_pattern', 'layers_to_transform', 'megatron_config',
-        'megatron_core', 'trainable_token_indices', 'use_dora', 'use_rslora'
+        'megatron_core', 'trainable_token_indices', 'use_dora', 'use_rslora',
+        'exclude_modules'
     ]
     
     removed_keys = []
